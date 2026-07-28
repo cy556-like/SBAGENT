@@ -364,8 +364,17 @@ def require_admin(request: Request) -> str:
 
 
 DIGITAL_TEACHER_AGENT_ID = "digital-zheng-teacher-agent"
+DIGITAL_TEACHER_AGENT_SUFFIX = "-digital-zheng-teacher-agent"
 FULL_KB_ADMIN_USERNAME = "adminquanzhi"
 LIMITED_KB_ADMIN_USERNAME = "admin"
+
+
+def is_digital_teacher_agent(agent_id: str) -> bool:
+    """识别旧版及带工作区前缀的数字郑老师智能体 ID。"""
+    return bool(agent_id and (
+        agent_id == DIGITAL_TEACHER_AGENT_ID
+        or agent_id.endswith(DIGITAL_TEACHER_AGENT_SUFFIX)
+    ))
 
 
 def ensure_requested_username(current_username: str, requested_username: str | None) -> str:
@@ -384,7 +393,7 @@ def ensure_chat_ownership(username: str, chat_id: str) -> None:
 
 def ensure_kb_upload_permission(username: str, agent_id: str) -> None:
     """校验知识库上传权限。数字郑老师知识库仅全权限账号可上传。"""
-    if agent_id == DIGITAL_TEACHER_AGENT_ID and username != FULL_KB_ADMIN_USERNAME:
+    if is_digital_teacher_agent(agent_id) and username != FULL_KB_ADMIN_USERNAME:
         raise HTTPException(status_code=403, detail="当前账号无权向数字郑老师知识库上传文档")
 
 
@@ -392,7 +401,7 @@ def ensure_kb_delete_permission(username: str, agent_id: str) -> None:
     """校验知识库删除权限，后端强制执行，不能通过直接调用 API 绕过。"""
     if username == FULL_KB_ADMIN_USERNAME:
         return
-    if username == LIMITED_KB_ADMIN_USERNAME and agent_id != DIGITAL_TEACHER_AGENT_ID:
+    if username == LIMITED_KB_ADMIN_USERNAME and not is_digital_teacher_agent(agent_id):
         return
     raise HTTPException(status_code=403, detail="当前账号无权删除该知识库的文档")
 
