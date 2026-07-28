@@ -4895,6 +4895,18 @@ body.body-portal-mode {
     letter-spacing: 0.2px;
 }
 
+.subagent-workspace-label.measurement-highlight {
+    border-color: rgba(163, 108, 43, 0.38);
+    background: rgba(184, 132, 69, 0.14);
+    color: #86551d;
+}
+
+[data-theme="dark"] .subagent-workspace-label.measurement-highlight {
+    border-color: rgba(221, 174, 113, 0.48);
+    background: rgba(184, 132, 69, 0.2);
+    color: #f0c98f;
+}
+
 .welcome-center .subagent-welcome-name {
     margin: 12px 0 8px;
     color: var(--text-primary);

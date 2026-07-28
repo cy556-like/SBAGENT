@@ -1955,6 +1955,9 @@ function updateWelcomeContent() {
 
 function renderSubagentWelcome(welcomeEl, config) {
     const workMethod = window.SUBAO_WORK_METHOD || { phaseOne: '', phaseTwo: [] };
+    const workspaceLabelClass = config.workspaceId === 'measurement-laboratory-agent'
+        ? ' measurement-highlight'
+        : '';
     const capabilityHtml = (config.capabilities || []).map(capability => {
         const isPlanned = capability.includes('飞书');
         return `
@@ -1968,7 +1971,7 @@ function renderSubagentWelcome(welcomeEl, config) {
 
     welcomeEl.innerHTML = `
         <section class="subagent-welcome" aria-label="${escapeHtml(config.name)}介绍">
-            <div class="subagent-workspace-label">${escapeHtml(config.workspaceName)}</div>
+            <div class="subagent-workspace-label${workspaceLabelClass}">${escapeHtml(config.workspaceName)}</div>
             <h2 class="subagent-welcome-name">${escapeHtml(config.name)}</h2>
             <p class="subagent-welcome-desc">${escapeHtml(config.desc)}</p>
 
