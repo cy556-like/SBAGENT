@@ -4619,19 +4619,11 @@ body.body-portal-mode {
 }
 
 .agent-portal-logo {
-    min-width: 52px;
+    width: 68px;
     height: 42px;
-    padding: 0 8px;
-    border: 1px solid rgba(255, 255, 255, 0.52);
-    border-radius: 10px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-    font-size: 16px;
-    font-weight: 800;
-    letter-spacing: 1px;
+    display: block;
+    flex: 0 0 auto;
+    object-fit: contain;
 }
 
 .agent-portal-brand-copy {
