@@ -83,15 +83,6 @@ const ALLOWED_AGENT_IDS = [
     ...Object.keys(SUBAGENT_CONFIG_BY_ID)
 ];
 
-// 内置助手名称统一由代码控制，避免浏览器旧缓存或服务端旧数据恢复历史名称。
-const BUILTIN_AGENT_NAMES = {};
-WORKSPACE_TEACHER_AGENT_IDS.forEach(agentId => {
-    BUILTIN_AGENT_NAMES[agentId] = '数字郑老师';
-});
-Object.values(SUBAGENT_CONFIG_BY_ID).forEach(subagent => {
-    BUILTIN_AGENT_NAMES[subagent.id] = subagent.name;
-});
-
 const AGENT_PORTAL_CONFIG = WORKSPACE_CONFIG;
 
 // 按 ALLOWED_AGENT_IDS 定义的顺序排序智能体列表（保证侧边栏顺序永远固定）
@@ -450,12 +441,7 @@ function getAgentWelcomeConfig(agentId) {
     return null;
 }
 
-function forceCorrectAgents() {
-    let existing = [];
-    try { existing = JSON.parse(localStorage.getItem('forgeAgents') || '[]'); } catch(e) { existing = []; }
-    const existingMap = {};
-    existing.forEach(a => { existingMap[a.id] = a; });
-
+function buildBuiltinAgentDefaults() {
     const defaults = {};
     WORKSPACE_TEACHER_AGENT_IDS.forEach(agentId => {
         const workspaceId = TEACHER_WORKSPACE_BY_ID[agentId];
@@ -474,6 +460,16 @@ function forceCorrectAgents() {
             summary: subagent.desc
         };
     });
+    return defaults;
+}
+
+function forceCorrectAgents() {
+    let existing = [];
+    try { existing = JSON.parse(localStorage.getItem('forgeAgents') || '[]'); } catch(e) { existing = []; }
+    const existingMap = {};
+    existing.forEach(a => { existingMap[a.id] = a; });
+
+    const defaults = buildBuiltinAgentDefaults();
 
     const correctAgents = Object.keys(defaults).map(id => {
         const def = defaults[id];
@@ -481,8 +477,8 @@ function forceCorrectAgents() {
         return {
             id: id,
             name: def.name,
-            task: ex ? (ex.task || def.task) : def.task,
-            summary: ex ? (ex.summary || def.summary) : def.summary,
+            task: def.task,
+            summary: def.summary,
             mode: 'agent',
             created_at: ex ? (ex.created_at || 0) : 0,
             updated_at: ex ? (ex.updated_at || null) : null,
@@ -496,10 +492,13 @@ function forceCorrectAgents() {
 
 function filterAgents(agents) {
     if (!agents || !Array.isArray(agents)) return sortAgentsByFixedOrder(forceCorrectAgents());
+    const defaults = buildBuiltinAgentDefaults();
     // 保留内置智能体 + 用户动态创建的智能体（agent_ 开头）
     const filtered = agents
         .filter(a => ALLOWED_AGENT_IDS.includes(a.id) || (a.id && a.id.startsWith('agent_')))
-        .map(a => BUILTIN_AGENT_NAMES[a.id] ? { ...a, name: BUILTIN_AGENT_NAMES[a.id] } : a);
+        .map(a => defaults[a.id]
+            ? { ...a, name: defaults[a.id].name, task: defaults[a.id].task, summary: defaults[a.id].summary }
+            : a);
     // 确保内置智能体一定存在
     const hasBuiltIn = ALLOWED_AGENT_IDS.every(id => filtered.some(a => a.id === id));
     if (!hasBuiltIn) return sortAgentsByFixedOrder(forceCorrectAgents());
