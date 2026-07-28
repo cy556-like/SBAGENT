@@ -465,7 +465,7 @@
                     <div class="kb-upload-text">拖拽文件到此处，或<span class="kb-upload-link">点击上传</span></div>
 
 
-                    <div class="kb-upload-hint">支持 PDF、Word、Excel、TXT、图片(PNG/JPG等) 格式</div>
+                    <div class="kb-upload-hint">支持鼠标批量选择 PDF、Word、Excel、TXT、图片(PNG/JPG等) 文件</div>
 
 
                     <div class="kb-upload-warn">上传文件后需等待1分钟以上，后台处理完成后即可使用</div>
@@ -474,7 +474,7 @@
                 </div>
 
 
-                <input type="file" id="kbPageFileInput" accept=".pdf,.txt,.docx,.xlsx,.xls,.doc,.png,.jpg,.jpeg,.gif,.bmp,.webp" onchange="onKbPageFileSelected(event)" style="display:none">
+                <input type="file" id="kbPageFileInput" accept=".pdf,.txt,.docx,.xlsx,.xls,.doc,.png,.jpg,.jpeg,.gif,.bmp,.webp" onchange="onKbPageFileSelected(event)" multiple style="display:none">
 
 
                 <div class="kb-upload-progress" id="kbPageProgress" style="display:none;">
@@ -733,7 +733,7 @@ function toggleFaq(el) {
 
 
     <script src="/static/js/subagents-data.js?v=20260728c"></script>
-<script src="/static/js/app.js?v=20260728f"></script>
+<script src="/static/js/app.js?v=20260729a"></script>
 
 
 </body>

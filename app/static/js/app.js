@@ -3744,55 +3744,140 @@ async function loadKbPageDocs() {
 
 async function onKbPageFileSelected(event) {
     if (!canUploadKnowledgeBase()) { showToast('当前账号无权向该知识库上传文档'); event.target.value = ''; return; }
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-    for (let i = 0; i < files.length; i++) {
-        await uploadToKbPage(files[i]);
-    }
+    const files = Array.from(event.target.files || []);
     event.target.value = '';
-    await loadKbPageDocs();
+    if (files.length === 0) return;
+    await uploadKbPageFiles(files);
 }
 
-async function uploadToKbPage(file) {
-    if (!canUploadKnowledgeBase()) { showToast('当前账号无权向该知识库上传文档'); return; }
+let _kbPageBatchUploading = false;
+
+async function uploadKbPageFiles(fileList) {
+    if (!canUploadKnowledgeBase()) {
+        showToast('当前账号无权向该知识库上传文档');
+        return;
+    }
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+    if (_kbPageBatchUploading) {
+        showToast('已有一批文件正在上传，请等待完成');
+        return;
+    }
+
+    const input = document.getElementById('kbPageFileInput');
     const progressEl = document.getElementById('kbPageProgress');
     const fileNameEl = document.getElementById('kbProgressFileName');
     const barFill = document.getElementById('kbProgressBarFill');
     const statusEl = document.getElementById('kbProgressStatus');
+    _kbPageBatchUploading = true;
+    if (input) input.disabled = true;
     progressEl.style.display = 'block';
+    barFill.style.background = '';
+
+    let successCount = 0;
+    const failedFiles = [];
+    try {
+        for (let i = 0; i < files.length; i++) {
+            const result = await uploadToKbPage(files[i], {
+                index: i + 1,
+                total: files.length,
+                keepVisible: true
+            });
+            if (result.ok) successCount++;
+            else failedFiles.push(files[i].name);
+        }
+        await loadKbPageDocs();
+        barFill.style.width = '100%';
+        fileNameEl.textContent = files.length > 1
+            ? `批量上传完成，共选择 ${files.length} 个文件`
+            : `${files[0].name} 上传完成`;
+        if (failedFiles.length === 0) {
+            statusEl.textContent = `全部上传成功：${successCount}/${files.length}`;
+            statusEl.className = 'kb-progress-status success';
+            showToast(`已成功上传 ${successCount} 个文件`);
+        } else {
+            statusEl.textContent = `成功 ${successCount} 个，失败 ${failedFiles.length} 个：${failedFiles.join('、')}`;
+            statusEl.className = 'kb-progress-status error';
+            barFill.style.background = '#1051BF';
+            showToast(`批量上传完成：成功 ${successCount} 个，失败 ${failedFiles.length} 个`);
+        }
+    } finally {
+        _kbPageBatchUploading = false;
+        if (input) input.disabled = !canUploadKnowledgeBase();
+        setTimeout(() => {
+            if (!_kbPageBatchUploading) {
+                progressEl.style.display = 'none';
+                barFill.style.background = '';
+            }
+        }, 5000);
+    }
+}
+
+async function uploadToKbPage(file, options = {}) {
+    if (!canUploadKnowledgeBase()) {
+        showToast('当前账号无权向该知识库上传文档');
+        return { ok: false, error: '无上传权限' };
+    }
+    const progressEl = document.getElementById('kbPageProgress');
+    const fileNameEl = document.getElementById('kbProgressFileName');
+    const barFill = document.getElementById('kbProgressBarFill');
+    const statusEl = document.getElementById('kbProgressStatus');
+    const index = options.index || 1;
+    const total = options.total || 1;
+    const progressBase = ((index - 1) / total) * 100;
+    const progressSpan = 100 / total;
+    const setProgress = ratio => {
+        barFill.style.width = Math.min(100, progressBase + progressSpan * ratio) + '%';
+    };
+    progressEl.style.display = 'block';
+    barFill.style.background = '';
     const isImage = file.type && file.type.startsWith('image/');
     const agent = myAgents.find(a => a.id === currentAgentId);
     const kbLabel = agent ? agent.name + ' 知识库' : '知识库';
-    fileNameEl.textContent = (isImage ? '🖼️ ' : '') + file.name + ' → ' + kbLabel + (isImage ? '（VLM解析中）' : '');
-    barFill.style.width = '10%';
-    statusEl.textContent = '上传中...';
+    const batchPrefix = total > 1 ? `[${index}/${total}] ` : '';
+    fileNameEl.textContent = batchPrefix + (isImage ? '🖼️ ' : '') + file.name + ' → ' + kbLabel + (isImage ? '（VLM解析中）' : '');
+    setProgress(0.1);
+    statusEl.textContent = total > 1 ? `正在上传第 ${index}/${total} 个文件...` : '上传中...';
     statusEl.className = 'kb-progress-status';
     const formData = new FormData();
     formData.append('file', file);
     if (currentAgentId) formData.append('agent_id', currentAgentId);
     try {
-        barFill.style.width = '30%';
+        setProgress(0.3);
         const resp = await fetch('/api/v1/upload', { method: 'POST', body: formData, headers: authToken ? { 'Authorization': 'Bearer ' + authToken } : {} });
-        barFill.style.width = '80%';
+        setProgress(0.8);
         const data = await resp.json();
         if (resp.ok && (data.status === 'success' || data.filename)) {
-            barFill.style.width = '100%';
+            setProgress(1);
             const chunks = data.detail?.chunks || data.chunks || 0;
-            statusEl.textContent = '上传成功！' + (chunks ? '共 ' + chunks + ' 个分块' : '');
+            statusEl.textContent = total > 1
+                ? `第 ${index}/${total} 个上传成功` + (chunks ? '，共 ' + chunks + ' 个分块' : '')
+                : '上传成功！' + (chunks ? '共 ' + chunks + ' 个分块' : '');
             statusEl.className = 'kb-progress-status success';
+            if (!options.keepVisible) {
+                setTimeout(() => { progressEl.style.display = 'none'; barFill.style.background = ''; }, 3000);
+            }
+            return { ok: true, data };
         } else {
-            barFill.style.width = '100%';
+            setProgress(1);
             barFill.style.background = '#1051BF';
             statusEl.textContent = '上传失败：' + (data.detail || '未知错误');
             statusEl.className = 'kb-progress-status error';
+            if (!options.keepVisible) {
+                setTimeout(() => { progressEl.style.display = 'none'; barFill.style.background = ''; }, 3000);
+            }
+            return { ok: false, error: data.detail || '未知错误' };
         }
     } catch (e) {
-        barFill.style.width = '100%';
+        setProgress(1);
         barFill.style.background = '#1051BF';
         statusEl.textContent = '网络错误，请重试';
         statusEl.className = 'kb-progress-status error';
+        if (!options.keepVisible) {
+            setTimeout(() => { progressEl.style.display = 'none'; barFill.style.background = ''; }, 3000);
+        }
+        return { ok: false, error: e.message || '网络错误' };
     }
-    setTimeout(() => { progressEl.style.display = 'none'; barFill.style.background = ''; }, 3000);
 }
 
 async function deleteKbPageDoc(filename, btnEl) {
@@ -3851,16 +3936,13 @@ function setupKbPageDragDrop() {
         e.stopPropagation();
         zone.classList.remove('drag-over');
     });
-    zone.addEventListener('drop', function(e) {
+    zone.addEventListener('drop', async function(e) {
         e.preventDefault();
         e.stopPropagation();
         zone.classList.remove('drag-over');
         const files = e.dataTransfer.files;
         if (files && files.length > 0) {
-            for (let i = 0; i < files.length; i++) {
-                uploadToKbPage(files[i]);
-            }
-            setTimeout(() => loadKbPageDocs(), 1500);
+            await uploadKbPageFiles(files);
         }
     });
 }
