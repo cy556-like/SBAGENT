@@ -63,8 +63,8 @@ def _load_users() -> dict:
             changed = True
         required_users = {
             "admin": ("admin123", "admin"),
-            "adminsubao": ("quanzhi123", "admin"),
-            "user01": ("jluser1", "user"),
+            "adminsubao": ("subao123", "admin"),
+            "user01": ("subaouser1", "user"),
         }
         for username, (default_password, required_role) in required_users.items():
             if username not in users:
@@ -79,8 +79,8 @@ def _load_users() -> dict:
                 changed = True
         # 一次性迁移上一版本生成的临时密码；已被管理员改过的密码保持不变
         password_migrations = {
-            "adminsubao": ("AdminQZ2026!", "quanzhi123"),
-            "user01": ("User012026!", "jluser1"),
+            "adminsubao": ("quanzhi123", "subao123"),
+            "user01": ("jluser1", "subaouser1"),
         }
         for username, (old_password, new_password) in password_migrations.items():
             info = users.get(username, {})
@@ -108,13 +108,13 @@ def _load_users() -> dict:
             "role": "admin",
         },
         "adminsubao": {
-            "password_hash": _hash_password("quanzhi123"),
-            "password_plain": "quanzhi123",
+            "password_hash": _hash_password("subao123"),
+            "password_plain": "subao123",
             "role": "admin",
         },
         "user01": {
-            "password_hash": _hash_password("jluser1"),
-            "password_plain": "jluser1",
+            "password_hash": _hash_password("subaouser1"),
+            "password_plain": "subaouser1",
             "role": "user",
         }
     }
