@@ -61,7 +61,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
 
 
-    <link rel="stylesheet" href="/static/css/style.css?v=20260724b">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260728a">
 
 
 </head>
@@ -214,6 +214,79 @@
 
 
 
+<!-- ========== Agent Portal Page ========== -->
+
+
+<section class="agent-portal-page" id="agentPortalPage" aria-label="智能体选择" style="display:none;">
+
+
+    <header class="agent-portal-header">
+
+
+        <div class="agent-portal-brand" aria-label="速豹质量管理智能体平台">
+
+
+            <span class="agent-portal-logo">速豹</span>
+
+
+            <span class="agent-portal-brand-copy">
+
+
+                <strong>速豹 质量管理智能体平台</strong>
+
+
+                <small>全天候质量工作助手</small>
+
+
+            </span>
+
+
+        </div>
+
+
+        <div class="agent-portal-account">
+
+
+            <span class="agent-portal-online"><i></i>在线</span>
+
+
+            <span class="agent-portal-user" id="portalUserName">用户</span>
+
+
+            <button class="agent-portal-logout" type="button" onclick="doLogout()" title="退出登录" aria-label="退出登录">退出</button>
+
+
+        </div>
+
+
+    </header>
+
+
+    <main class="agent-portal-main">
+
+
+        <div class="agent-portal-intro">
+
+
+            <h1>选择质量智能体</h1>
+
+
+            <p>选择一个专业智能体，进入独立的聊天、知识库与工作空间</p>
+
+
+        </div>
+
+
+        <div class="agent-portal-grid" id="agentPortalGrid"></div>
+
+
+    </main>
+
+
+</section>
+
+
+
 <!-- Chat Page -->
 
 
@@ -226,7 +299,7 @@
         <div class="sidebar-header">
 
 
-            <div class="sidebar-brand" id="sidebarBrand"><div class="sidebar-brand-icon">速豹</div><span class="sidebar-brand-name">质量改进/精益 智能体</span></div>
+            <div class="sidebar-brand" id="sidebarBrand" onclick="showAgentPortal()" role="button" tabindex="0" title="返回智能体首页"><div class="sidebar-brand-icon">速豹</div><span class="sidebar-brand-name">速豹</span></div>
 
 
             <div class="sidebar-section-title" id="agentsSectionTitle"><span class="section-title-text">智能体：</span></div>
@@ -656,7 +729,7 @@ function toggleFaq(el) {
 </script>
 
 
-<script src="/static/js/app.js?v=20260724b"></script>
+<script src="/static/js/app.js?v=20260728a"></script>
 
 
 </body>

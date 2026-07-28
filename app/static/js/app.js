@@ -51,28 +51,76 @@ let _lastSyncedAgentsHash = '';
 // 允许的智能体ID白名单（与后端 storage.py 保持一致）
 // 顺序即侧边栏固定显示顺序，点击等操作不会改变
 const ALLOWED_AGENT_IDS = [
-    'digital-zheng-teacher-agent', // 1. 数字郑老师
-    'dfmea-risk-agent',            // 2. 整车制造过程改进工作助手
-    'part-design-agent',           // 3. 三电系统质量改进工作助手
-    'simulation-optimization-agent', // 4. 整车评审与AUDIT工作助手
-    'ee-design-agent',             // 5. 供应商来料协同工作助手
-    'embedded-software-agent',     // 6. 售后市场质量改进工作助手
-    'test-verification-agent',     // 7. 数据统计分析预警工作助手
-    'equipment-production-agent',  // 8. 防再发与经验库工作助手
-    'lean-improvement-agent',      // 9. 精益提升工作助手
+    'project-development-quality-agent',
+    'process-quality-control-agent',
+    'supplier-quality-agent',
+    'aftersales-quality-agent',
+    'quality-system-agent',
+    'measurement-laboratory-agent',
+    'continuous-improvement-agent',
 ];
 
 // 内置助手名称统一由代码控制，避免浏览器旧缓存或服务端旧数据恢复历史名称
 const BUILTIN_AGENT_NAMES = {
-    'digital-zheng-teacher-agent': '数字郑老师',
-    'dfmea-risk-agent': '整车制造过程改进工作助手',
-    'part-design-agent': '三电系统质量改进工作助手',
-    'simulation-optimization-agent': '整车评审与AUDIT工作助手',
-    'ee-design-agent': '供应商来料协同工作助手',
-    'embedded-software-agent': '售后市场质量改进工作助手',
-    'test-verification-agent': '数据统计分析预警工作助手',
-    'equipment-production-agent': '防再发与经验库工作助手',
-    'lean-improvement-agent': '精益提升工作助手',
+    'project-development-quality-agent': '项目开发质量智能体',
+    'process-quality-control-agent': '过程质量管控智能体',
+    'supplier-quality-agent': '供应商质量智能体',
+    'aftersales-quality-agent': '售后质量智能体',
+    'quality-system-agent': '体系智能体',
+    'measurement-laboratory-agent': '测量与实验室智能体',
+    'continuous-improvement-agent': '持续改进智能体',
+};
+
+const AGENT_PORTAL_CONFIG = {
+    'project-development-quality-agent': {
+        icon: '🚘',
+        color: '#2f6be6',
+        slogan: '前置拦截，缩短周期',
+        desc: '贯穿研发项目管理的各个阶段，提高研发效率，智能管控研发全流程质量。',
+        questions: ['如何建立项目开发质量策划清单？', '帮我梳理新项目质量风险和前置拦截措施。', '如何设置开发阶段质量阀点？', '请给出项目质量问题闭环跟踪模板。']
+    },
+    'process-quality-control-agent': {
+        icon: '⚙️',
+        color: '#168b83',
+        slogan: '稳质降废，提效减损',
+        desc: '快速分析处理过程中的质量问题，判定波动并协助进行闭环处置。',
+        questions: ['如何快速判断过程质量波动来源？', '帮我制定现场异常分层响应流程。', '如何分析过程能力不足问题？', '请给出过程质量闭环检查清单。']
+    },
+    'supplier-quality-agent': {
+        icon: '🔗',
+        color: '#b4771f',
+        slogan: '严控源头，减少问题',
+        desc: '全周期管控供应商质量，智能评级预警，协同处置来料异常风险。',
+        questions: ['如何建立供应商质量分级评价机制？', '帮我分析一起来料异常并制定处置方案。', '供应商质量预警指标应该如何设置？', '请给出供应商问题整改跟踪模板。']
+    },
+    'aftersales-quality-agent': {
+        icon: '🛡️',
+        color: '#d14a52',
+        slogan: '降低索赔，提升口碑',
+        desc: '根据售后质量的庞大信息进行分析，得出故障模式、趋势统计等结论。',
+        questions: ['如何从售后数据中识别高频故障模式？', '帮我设计售后质量问题聚类分析方法。', '如何确定售后改进项目优先级？', '请给出售后质量趋势分析框架。']
+    },
+    'quality-system-agent': {
+        icon: '📚',
+        color: '#7856d8',
+        slogan: '合规提效，体系落地',
+        desc: '智能管理体系文件，监控合规运行，支撑内审外审持续优化。',
+        questions: ['如何搭建质量管理体系文件清单？', '帮我准备一次内部质量审核。', '如何跟踪体系不符合项闭环？', '请给出管理评审输入输出检查表。']
+    },
+    'measurement-laboratory-agent': {
+        icon: '🔬',
+        color: '#2387b8',
+        slogan: '精准测量，高效可靠',
+        desc: '管控测量与实验全流程，校核数据，保障检测结果精准可信。',
+        questions: ['如何制定测量设备校准和期间核查计划？', '帮我判断测量系统分析结果是否合格。', '实验室数据异常应该如何复核？', '请给出检测结果有效性检查清单。']
+    },
+    'continuous-improvement-agent': {
+        icon: '📈',
+        color: '#1a9b62',
+        slogan: '质效跃升，持续精进（可试用）',
+        desc: '挖掘质量痛点，驱动改进项目实施，追踪进度并实现闭环。',
+        questions: ['如何识别最值得立项的持续改进课题？', '帮我用PDCA制定改进项目计划。', '如何验证改进措施的长期有效性？', '请给出持续改进项目闭环模板。']
+    }
 };
 
 // 按 ALLOWED_AGENT_IDS 定义的顺序排序智能体列表（保证侧边栏顺序永远固定）
@@ -408,6 +456,14 @@ const AGENT_WELCOME_CONFIG = {
 
 // 获取智能体欢迎页配置（内置+自定义智能体）
 function getAgentWelcomeConfig(agentId) {
+    if (AGENT_PORTAL_CONFIG[agentId]) {
+        const config = AGENT_PORTAL_CONFIG[agentId];
+        return {
+            name: BUILTIN_AGENT_NAMES[agentId],
+            desc: config.desc,
+            questions: config.questions
+        };
+    }
     if (AGENT_WELCOME_CONFIG[agentId]) return AGENT_WELCOME_CONFIG[agentId];
     const agent = myAgents.find(a => a.id === agentId);
     if (agent) {
@@ -427,15 +483,41 @@ function forceCorrectAgents() {
     existing.forEach(a => { existingMap[a.id] = a; });
 
     const defaults = {
-        'digital-zheng-teacher-agent': { name: '数字郑老师', task: '你是郑伟老师AI分身，面向贵阳吉利汽车质量改进与精益工作，负责专业答疑、方法辅导、案例复盘和知识传承。你必须始终自称“郑伟老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持郑伟老师AI分身的身份。请始终优先检索本助手独立知识库中的资料后回答专业问题，并明确区分知识库事实与通用建议。', summary: '质量改进与精益专业辅导' },
-        'dfmea-risk-agent': { name: '整车制造过程改进工作助手', task: '关注冲焊涂总四大工艺关键特性，智能诊断尺寸偏差与焊接飞溅等顽疾，驱动过程能力指数提升，夯实大批量制造质量。', summary: '整车制造过程改进' },
-        'part-design-agent': { name: '三电系统质量改进工作助手', task: '围绕电池、电机、电控，关注绝缘耐压、气密性等核心参数，利用特征分析锁定失效真因，守护新能源安全底线。', summary: '三电系统质量改进' },
-        'simulation-optimization-agent': { name: '整车评审与AUDIT工作助手', task: '依照AUDIT标准进行整车静态、动态评审，数字化记录扣分项，智能分级分类，精准拉动责任单位快速整改，提升整车感官与功能品质。', summary: '整车评审与AUDIT' },
-        'ee-design-agent': { name: '供应商来料协同工作助手', task: '和SQE部门协同，针对百家供应商，确保零部件高质量入厂。', summary: '供应商来料协同' },
-        'embedded-software-agent': { name: '售后市场质量改进工作助手', task: '打通市场、三包维修数据，智能聚类高频故障，快速启动优先改进，提升出口及国内用户满意度。', summary: '售后市场质量改进' },
-        'test-verification-agent': { name: '数据统计分析预警工作助手', task: '汇聚产销全链条数据，以AI算法分析并预测质量趋势，异常点分级，让决策靠数据说话。', summary: '数据统计分析预警' },
-        'equipment-production-agent': { name: '防再发与经验库工作助手', task: '将历史质量问题结构化入库，在合适的时机，自动推送“避坑”措施，有效防止同类缺陷复发。', summary: '防再发与经验库' },
-        'lean-improvement-agent': { name: '精益提升工作助手', task: '你是贵阳吉利汽车的精益提升工作助手，聚焦价值流分析、七大浪费识别、标准作业、现场5S、产线平衡、快速换模和持续改善。请始终优先检索本助手独立知识库中的精益标准、改善案例和现场资料后回答问题。', summary: '精益改善与效率提升' }
+        'project-development-quality-agent': {
+            name: '项目开发质量智能体',
+            task: '你是速豹项目开发质量智能体，贯穿研发项目管理各阶段，负责质量策划、风险前置识别、质量阀点检查、问题闭环和开发质量提升。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
+            summary: '前置拦截，缩短周期'
+        },
+        'process-quality-control-agent': {
+            name: '过程质量管控智能体',
+            task: '你是速豹过程质量管控智能体，负责制造过程质量波动识别、异常分析、过程能力评价、现场处置和闭环验证。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
+            summary: '稳质降废，提效减损'
+        },
+        'supplier-quality-agent': {
+            name: '供应商质量智能体',
+            task: '你是速豹供应商质量智能体，负责供应商全周期质量管理、绩效评价、风险预警、来料异常协同处置和整改闭环。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
+            summary: '严控源头，减少问题'
+        },
+        'aftersales-quality-agent': {
+            name: '售后质量智能体',
+            task: '你是速豹售后质量智能体，负责售后质量信息分析、故障模式识别、趋势统计、索赔风险判断和改进项目推动。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
+            summary: '降低索赔，提升口碑'
+        },
+        'quality-system-agent': {
+            name: '体系智能体',
+            task: '你是速豹体系智能体，负责质量管理体系文件、合规运行、内外部审核、不符合项闭环和体系持续优化。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
+            summary: '合规提效，体系落地'
+        },
+        'measurement-laboratory-agent': {
+            name: '测量与实验室智能体',
+            task: '你是速豹测量与实验室智能体，负责测量设备、测量系统分析、实验流程、检测数据复核和结果有效性保障。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
+            summary: '精准测量，高效可靠'
+        },
+        'continuous-improvement-agent': {
+            name: '持续改进智能体',
+            task: '你是速豹持续改进智能体，负责质量痛点识别、改进课题策划、PDCA推进、措施验证、成效固化和闭环追踪。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
+            summary: '质效跃升，持续精进'
+        }
     };
 
     const correctAgents = Object.keys(defaults).map(id => {
@@ -472,6 +554,75 @@ function filterAgents(agents) {
 let myAgents = filterAgents((function() { try { return JSON.parse(localStorage.getItem('forgeAgents') || 'null'); } catch(e) { return null; } })());
 let currentAgentId = null;
 let agentKbUploadMode = false;
+
+function renderAgentPortal() {
+    const grid = document.getElementById('agentPortalGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    ALLOWED_AGENT_IDS.forEach(agentId => {
+        const config = AGENT_PORTAL_CONFIG[agentId];
+        const agent = myAgents.find(item => item.id === agentId);
+        if (!config || !agent) return;
+
+        const card = document.createElement('article');
+        card.className = 'agent-portal-card';
+        card.style.setProperty('--card-accent', config.color);
+        card.innerHTML = `
+            <div class="agent-portal-card-icon" aria-hidden="true">${config.icon}</div>
+            <h2>${escapeHtml(agent.name)}</h2>
+            <div class="agent-portal-card-slogan">${escapeHtml(config.slogan)}</div>
+            <p class="agent-portal-card-desc">${escapeHtml(config.desc)}</p>
+            <button class="agent-portal-enter" type="button" data-agent-id="${escapeHtml(agentId)}">进入 →</button>
+        `;
+        const enterButton = card.querySelector('.agent-portal-enter');
+        enterButton.addEventListener('click', () => enterAgentFromPortal(agentId));
+        grid.appendChild(card);
+    });
+}
+
+function showAgentPortal(pushHistory = true) {
+    if (!currentUser || !authToken) return;
+
+    stopGeneration();
+    const portal = document.getElementById('agentPortalPage');
+    const chatPage = document.getElementById('chatPage');
+    const kbPage = document.getElementById('kbPage');
+    const loginModal = document.getElementById('loginModal');
+    const portalUserName = document.getElementById('portalUserName');
+
+    if (portalUserName) {
+        portalUserName.textContent = userRole === 'admin' ? `${currentUser}（管理员）` : currentUser;
+    }
+    if (kbPage) kbPage.style.display = 'none';
+    if (chatPage) chatPage.style.display = 'none';
+    if (loginModal) loginModal.classList.remove('show');
+    if (portal) portal.style.display = 'flex';
+    document.body.classList.remove('body-chat-mode');
+    document.body.classList.add('body-portal-mode');
+    renderAgentPortal();
+
+    if (pushHistory && (!history.state || history.state.page !== 'portal')) {
+        history.pushState({page: 'portal'}, '');
+    }
+}
+
+async function enterAgentFromPortal(agentId, pushHistory = true) {
+    if (!currentUser || !authToken || !ALLOWED_AGENT_IDS.includes(agentId)) return;
+
+    const portal = document.getElementById('agentPortalPage');
+    const chatPage = document.getElementById('chatPage');
+    if (portal) portal.style.display = 'none';
+    if (chatPage) chatPage.style.display = 'flex';
+    document.body.classList.remove('body-portal-mode');
+    document.body.classList.add('body-chat-mode');
+
+    await switchToAgent(agentId);
+
+    if (pushHistory) {
+        history.pushState({page: 'chat', agentId: agentId}, '');
+    }
+}
 
 function _resolveMergeDirection(local, serverAgent) {
     // BUG FIX: Improved timestamp-based merge logic for prompt sync across browsers
@@ -767,7 +918,7 @@ async function switchToAgent(agentId) {
     if (wasKbPageOpen) {
         kbPage.style.display = 'none';
         if (history.state && history.state.page === 'kb') {
-            history.replaceState({page: 'chat'}, '');
+            history.replaceState({page: 'chat', agentId: agentId}, '');
         }
     }
 }
@@ -778,12 +929,6 @@ function renderMyAgents() {
     list.innerHTML = '';
 
     myAgents.forEach(agent => {
-        if (agent.id === 'dfmea-risk-agent') {
-            const divider = document.createElement('div');
-            divider.className = 'agent-group-divider';
-            divider.textContent = '工作助手：';
-            list.appendChild(divider);
-        }
         const item = document.createElement('div');
         item.className = `agent-item${agent.id === currentAgentId ? ' active' : ''}`;
         item.setAttribute('data-agent-id', agent.id);
@@ -792,13 +937,13 @@ function renderMyAgents() {
             <div class="agent-item-info">
                 <div class="agent-item-name">${escapeHtml(agent.name)}</div>
             </div>
-            <button class="agent-action-btn new-chat" data-action="new-chat" data-agent-id="${agent.id}" title="新建对话" aria-label="新建对话"><svg width="22" height="22" viewBox="0 0 24 24" class="agent-new-chat-icon"><rect x="1" y="1" width="22" height="22" rx="6" ry="6" fill="#1051BF"/><path d="M9.5 6.5L18.5 12L9.5 17.5Z" fill="white"/></svg></button>
+            <button class="agent-action-btn new-chat" data-action="new-chat" data-agent-id="${agent.id}" title="新建对话" aria-label="新建对话"><svg width="22" height="22" viewBox="0 0 24 24" class="agent-new-chat-icon"><rect x="1" y="1" width="22" height="22" rx="6" ry="6" fill="#255289"/><path d="M9.5 6.5L18.5 12L9.5 17.5Z" fill="white"/></svg></button>
         `;
         list.appendChild(item);
     });
 
     // 事件委托：在列表容器上统一处理点击，避免 innerHTML 后事件丢失
-    list.onclick = function(e) {
+    list.onclick = async function(e) {
         const newChatBtn = e.target.closest('[data-action="new-chat"]');
         if (newChatBtn) {
             e.stopPropagation();
@@ -814,7 +959,8 @@ function renderMyAgents() {
         if (agentItem) {
             const aid = agentItem.getAttribute('data-agent-id');
             if (aid) {
-                switchToAgent(aid);
+                await switchToAgent(aid);
+                history.replaceState({page: 'chat', agentId: aid}, '');
                 closeSidebarOnMobile();
             }
         }
@@ -1454,8 +1600,9 @@ async function doLogin() {
             localStorage.setItem('userRole', userRole);
             msgEl.className = 'msg-box success'; msgEl.textContent = '登录成功！';
             setTimeout(async () => {
-                // 初始化完成前保持聊天页隐藏，避免默认标题/欢迎页短暂闪现
+                // 初始化完成前保持入口页与聊天页隐藏，避免界面闪现
                 document.getElementById('chatPage').style.display = 'none';
+                document.getElementById('agentPortalPage').style.display = 'none';
                 document.getElementById('headerUserName').textContent = username;
                 document.getElementById('headerUserAvatar').textContent = username[0].toUpperCase();
                 // 显示管理员标识
@@ -1465,20 +1612,17 @@ async function doLogin() {
                 loadChatList();
                 const modelLoadPromise = loadModels();
                 await syncAgentsFromServer(true);  // [#12] 登录时强制同步一次，内部已调用 rebuildChatIdsFromServer（会GET /chats）
+                await saveAgents();  // 将新的7个固定智能体写回服务端，清理旧站点智能体配置
                 await modelLoadPromise;
                 renderMyAgents();
+                renderAgentPortal();
                 updateKbUploadVisibility();
                 updateHeaderKbVisibility();
-                // [#14] 默认选中第一个智能体，避免进入空白的agent模式
-                if (!currentAgentId && myAgents.length > 0) {
-                    await switchToAgent(myAgents[0].id);
-                }
-                // 智能体、标题和欢迎页都准备好后，再一次性显示聊天页
-                document.getElementById('chatPage').style.display = 'flex';
+                currentAgentId = null;
+                // 登录成功后先进入7个智能体的选择页
                 document.getElementById('loginModal').classList.remove('show');
-                document.body.classList.add('body-chat-mode');
-                // [BUG FIX] Push history state so browser back button returns to login
-                history.pushState({page: 'chat'}, '');
+                showAgentPortal(false);
+                history.pushState({page: 'portal'}, '');
             }, 500);
         } else { msgEl.className = 'msg-box error'; msgEl.textContent = data.message || '登录失败'; }
     } catch (e) { msgEl.className = 'msg-box error'; msgEl.textContent = '网络错误'; }
@@ -1496,10 +1640,13 @@ function doLogout() {
     // Hide KB page if open
     const kbPage = document.getElementById('kbPage');
     if (kbPage) kbPage.style.display = 'none';
+    const agentPortalPage = document.getElementById('agentPortalPage');
+    if (agentPortalPage) agentPortalPage.style.display = 'none';
     document.getElementById('chatPage').style.display = 'none';
     // 登出后直接显示登录页
     document.getElementById('loginModal').classList.add('show');
     document.body.classList.remove('body-chat-mode');
+    document.body.classList.remove('body-portal-mode');
     document.getElementById('chatMessages').innerHTML = '';
     document.getElementById('loginUser').value = '';
     document.getElementById('loginPass').value = '';
@@ -1513,7 +1660,7 @@ function doLogout() {
     if (logoutMsg) { logoutMsg.textContent = ''; logoutMsg.className = 'msg-box'; }
     updateHeaderKbVisibility();
     // [BUG FIX] Update history state so back button is consistent
-    if (history.state && (history.state.page === 'chat' || history.state.page === 'kb')) {
+    if (history.state && (history.state.page === 'chat' || history.state.page === 'kb' || history.state.page === 'portal')) {
         history.replaceState({page: 'login'}, '');
     }
 }
@@ -1521,8 +1668,9 @@ function doLogout() {
 // [BUG FIX] Handle browser back/forward navigation
 // When user presses back from chat, return to login page (with logout).
 // When user presses forward from login while authenticated, return to chat.
-window.addEventListener('popstate', function(e) {
+window.addEventListener('popstate', async function(e) {
     const loginModal = document.getElementById('loginModal');
+    const agentPortalPage = document.getElementById('agentPortalPage');
     const chatPage = document.getElementById('chatPage');
     const kbPage = document.getElementById('kbPage');
     const chatContent = document.getElementById('chatContent');
@@ -1546,8 +1694,13 @@ window.addEventListener('popstate', function(e) {
                 // 这样保证不会错误地退出登录
             }
             loginModal.classList.remove('show');
+            if (agentPortalPage) agentPortalPage.style.display = 'none';
             chatPage.style.display = 'flex';
+            document.body.classList.remove('body-portal-mode');
             document.body.classList.add('body-chat-mode');
+            if (e.state.agentId && e.state.agentId !== currentAgentId) {
+                await switchToAgent(e.state.agentId);
+            }
             // [BUG FIX] 如果从知识库返回，关闭知识库页，恢复聊天页
             if (kbPage) kbPage.style.display = 'none';
             if (chatContent) chatContent.style.display = 'flex';
@@ -1556,11 +1709,19 @@ window.addEventListener('popstate', function(e) {
             // Not authenticated anymore, go back to login
             history.replaceState({page: 'login'}, '');
         }
+    } else if (e.state && e.state.page === 'portal') {
+        if (currentUser && authToken) {
+            showAgentPortal(false);
+        } else {
+            history.replaceState({page: 'login'}, '');
+        }
     } else if (e.state && e.state.page === 'kb') {
         // 前进到知识库页（用户按了前进按钮）
         if (currentUser && authToken && currentAgentId) {
             loginModal.classList.remove('show');
+            if (agentPortalPage) agentPortalPage.style.display = 'none';
             chatPage.style.display = 'flex';
+            document.body.classList.remove('body-portal-mode');
             document.body.classList.add('body-chat-mode');
             if (chatContent) chatContent.style.display = 'none';
             if (kbPage) kbPage.style.display = 'flex';
@@ -1579,9 +1740,11 @@ window.addEventListener('popstate', function(e) {
             localStorage.removeItem('authToken');
             localStorage.removeItem('userRole');
             if (kbPage) kbPage.style.display = 'none';
+            if (agentPortalPage) agentPortalPage.style.display = 'none';
             chatPage.style.display = 'none';
             loginModal.classList.add('show');
             document.body.classList.remove('body-chat-mode');
+            document.body.classList.remove('body-portal-mode');
             document.getElementById('chatMessages').innerHTML = '';
             document.getElementById('loginUser').value = '';
             document.getElementById('loginPass').value = '';
@@ -1610,19 +1773,16 @@ async function tryAutoLogin() {
             loadChatList();
             const modelLoadPromise = loadModels();
             await syncAgentsFromServer(true);  // [#12] 自动登录时强制同步
+            await saveAgents();
             await modelLoadPromise;
             renderMyAgents();
+            renderAgentPortal();
             updateKbUploadVisibility();
             updateHeaderKbVisibility();
-            // [#14] 默认选中第一个智能体，避免进入空白的agent模式
-            if (!currentAgentId && myAgents.length > 0) {
-                await switchToAgent(myAgents[0].id);
-            }
-            document.getElementById('chatPage').style.display = 'flex';
+            currentAgentId = null;
             document.getElementById('loginModal').classList.remove('show');
-            document.body.classList.add('body-chat-mode');
-            // [BUG FIX] Push history state so browser back button returns to login
-            history.pushState({page: 'chat'}, '');
+            showAgentPortal(false);
+            history.pushState({page: 'portal'}, '');
             return true;
         }
     } catch (e) { console.warn('自动登录失败', e); }
