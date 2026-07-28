@@ -32,6 +32,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from app.config import settings, VISION_MODELS, DEFAULT_VISION_MODEL, VISION_API_KEY, VISION_BASE_URL, FAST_MODELS, DEEPSEEK_MODELS, VOLCENGINE_MODELS, QWEN_MODELS, MIMO_MODELS, KIMI_MODELS, GLM_MODELS, AUTO_MODEL_ID, resolve_model_id
 from app.agent.tools import ALL_TOOLS, get_tools, set_current_agent_id, set_current_session_id, get_current_session_id, reset_search_count
 from app.agent.prompts import SYSTEM_PROMPT, SYSTEM_PROMPT_WITH_WEB_SEARCH, CHAT_SYSTEM_PROMPT, get_agent_keywords_section
+from app.agent.subagent_prompts import build_subagent_task
 from app.memory.manager import get_session_history
 
 logger = logging.getLogger(__name__)
@@ -972,7 +973,7 @@ def _resolve_agent_task(agent_task: str = None, agent_id: str = None) -> str:
     """按智能体ID补全关键角色，防止前端任务字段缺失时退回通用“小智”身份。"""
     if agent_id == DIGITAL_ZHENG_AGENT_ID:
         return DIGITAL_ZHENG_AGENT_TASK
-    return agent_task or ""
+    return build_subagent_task(agent_id, agent_task)
 
 def _build_agent_prompt(agent_task: str, web_search: bool = False, agent_id: str = None) -> str:
     """根据智能体的任务描述构建专属系统提示词
