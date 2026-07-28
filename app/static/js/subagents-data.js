@@ -15,7 +15,7 @@
         DASHBOARD: '看板：网页看板生成',
         EMAIL: '邮件：邮件收发',
         AUTOMATION: '自动化：定时任务与提醒',
-        FEISHU: '协同：飞书（规划中，仅展示）'
+        FEISHU: '协同：飞书（规划中）'
     };
 
     function buildSubagents(workspaceId, rows) {
@@ -180,7 +180,7 @@
     window.SUBAO_WORKSPACE_CONFIG = workspaces;
     window.SUBAO_SUBAGENT_INDEX = subagentIndex;
     window.SUBAO_WORK_METHOD = {
-        phaseOne: '第一阶段：以导入智能体知识库、数据分析与可视化导出为主要工作方式；知识库尽可能汇集公司及行业专业文件，例如体系文件、报告、失效模式库和标准条款，形成公司级内部记忆。飞书协同仅作为规划能力展示，本阶段不连接飞书接口。',
+        phaseOne: '以导入智能体知识库、数据分析与可视化导出为主要工作方式；知识库尽可能汇集公司及行业专业文件，例如体系文件、报告、失效模式库和标准条款，形成公司级内部记忆。',
         phaseTwo: [
             '与 MES、QMS、ERP 等系统集成，可通过 MCP 或 API 扩展，后续升级为自动读取系统数据。',
             '实时在线 SPC 监控，需要直连 PLC 或 MES 数据流。',

@@ -2210,13 +2210,24 @@ html { scroll-behavior: smooth; }
     flex-shrink: 0;
     box-shadow: 0 2px 12px rgba(0,0,0,0.3);
 }
-.login-top-bar-brand {
-    color: #FFFFFF;
-    font-size: 22px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    font-family: 'Noto Serif SC', serif;
-}
+.login-top-bar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    color: #FFFFFF;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    font-family: 'Noto Serif SC', serif;
+}
+
+.login-top-bar-logo {
+    width: 54px;
+    height: 34px;
+    display: block;
+    flex: 0 0 auto;
+    object-fit: contain;
+}
 
 /* Main Content Area */
 .login-main-area {
@@ -4940,10 +4951,10 @@ body.body-portal-mode {
 }
 
 .subagent-capability.planned {
-    border-style: dashed;
-    border-color: rgba(180, 119, 31, 0.48);
-    background: rgba(180, 119, 31, 0.07);
-    color: #9a641a;
+    border-style: solid;
+    border-color: rgba(37, 82, 137, 0.28);
+    background: #fff;
+    color: #255289;
 }
 
 .subagent-method-card {
@@ -4981,8 +4992,8 @@ body.body-portal-mode {
 }
 
 .subagent-method-phase.future strong {
-    background: #eef2f7;
-    color: #536174;
+    background: #255289;
+    color: #fff;
 }
 
 .welcome-center .subagent-method-phase p {
@@ -5018,13 +5029,14 @@ body.body-portal-mode {
 }
 
 [data-theme="dark"] .subagent-capability.planned {
-    background: rgba(180, 119, 31, 0.16);
-    color: #f0c47e;
+    border-color: rgba(120, 169, 233, 0.5);
+    background: rgba(37, 82, 137, 0.18);
+    color: #b9d4ff;
 }
 
 [data-theme="dark"] .subagent-method-phase.future strong {
-    background: rgba(255, 255, 255, 0.08);
-    color: #b8c1d1;
+    background: #255289;
+    color: #fff;
 }
 
 @media (max-width: 720px) {
