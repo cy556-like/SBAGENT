@@ -61,6 +61,12 @@ const ALLOWED_AGENT_IDS = [
     'continuous-improvement-agent',
 ];
 
+// 登录后的入口页只展示 7 个业务智能体。
+// 数字郑老师沿用 JLAGENT 的结构：仅在进入聊天页后的侧边栏置顶显示。
+const PORTAL_AGENT_IDS = ALLOWED_AGENT_IDS.filter(
+    agentId => agentId !== DIGITAL_TEACHER_AGENT_ID
+);
+
 // 内置助手名称统一由代码控制，避免浏览器旧缓存或服务端旧数据恢复历史名称
 const BUILTIN_AGENT_NAMES = {
     'digital-zheng-teacher-agent': '数字郑老师',
@@ -574,7 +580,7 @@ function renderAgentPortal() {
     if (!grid) return;
     grid.innerHTML = '';
 
-    ALLOWED_AGENT_IDS.forEach(agentId => {
+    PORTAL_AGENT_IDS.forEach(agentId => {
         const config = AGENT_PORTAL_CONFIG[agentId];
         const agent = myAgents.find(item => item.id === agentId);
         if (!config || !agent) return;
