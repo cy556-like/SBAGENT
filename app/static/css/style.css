@@ -4582,60 +4582,8 @@ body.body-portal-mode {
     outline-offset: 2px;
 }
 
-.sidebar-brand-icon,
-.header-user-avatar {
+.sidebar-brand-icon {
     background: var(--subao-header);
-}
-
-.chat-header {
-    background: var(--subao-header);
-    border-bottom-color: rgba(255, 255, 255, 0.2);
-    color: #fff;
-}
-
-.chat-header h1,
-.chat-header .header-user-name {
-    color: #fff;
-}
-
-.chat-header .header-user-info {
-    border-left-color: rgba(255, 255, 255, 0.28);
-}
-
-.chat-header .header-user-avatar {
-    background: #fff;
-    color: var(--subao-header);
-}
-
-.chat-header .header-btn,
-.chat-header .header-kb-btn,
-.chat-header .model-select {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.48);
-    color: #fff;
-}
-
-.chat-header .header-btn:hover,
-.chat-header .header-kb-btn:hover,
-.chat-header .model-select:hover,
-.chat-header .model-select:focus {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: #fff;
-    color: #fff;
-}
-
-.chat-header .model-select option {
-    background: #fff;
-    color: #1f2937;
-}
-
-.chat-header .header-logout-btn {
-    color: rgba(255, 255, 255, 0.86);
-}
-
-.chat-header .header-logout-btn:hover {
-    background: rgba(255, 255, 255, 0.16);
-    color: #fff;
 }
 
 .agent-portal-page {

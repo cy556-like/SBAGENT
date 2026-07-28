@@ -30,6 +30,7 @@ def _user_file(username: str) -> str:
 # 允许的智能体ID白名单（顺序与前端 ALLOWED_AGENT_IDS 保持一致）
 # 顺序即侧边栏固定显示顺序
 ALLOWED_AGENT_IDS = {
+    'digital-zheng-teacher-agent',
     'project-development-quality-agent',
     'process-quality-control-agent',
     'supplier-quality-agent',
@@ -41,6 +42,7 @@ ALLOWED_AGENT_IDS = {
 
 # 固定排序顺序列表（与前端 ALLOWED_AGENT_IDS 数组顺序一致）
 AGENT_SORT_ORDER = [
+    'digital-zheng-teacher-agent',
     'project-development-quality-agent',
     'process-quality-control-agent',
     'supplier-quality-agent',

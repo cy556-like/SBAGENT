@@ -51,6 +51,7 @@ let _lastSyncedAgentsHash = '';
 // 允许的智能体ID白名单（与后端 storage.py 保持一致）
 // 顺序即侧边栏固定显示顺序，点击等操作不会改变
 const ALLOWED_AGENT_IDS = [
+    'digital-zheng-teacher-agent',
     'project-development-quality-agent',
     'process-quality-control-agent',
     'supplier-quality-agent',
@@ -62,6 +63,7 @@ const ALLOWED_AGENT_IDS = [
 
 // 内置助手名称统一由代码控制，避免浏览器旧缓存或服务端旧数据恢复历史名称
 const BUILTIN_AGENT_NAMES = {
+    'digital-zheng-teacher-agent': '数字郑老师',
     'project-development-quality-agent': '项目开发质量智能体',
     'process-quality-control-agent': '过程质量管控智能体',
     'supplier-quality-agent': '供应商质量智能体',
@@ -72,6 +74,13 @@ const BUILTIN_AGENT_NAMES = {
 };
 
 const AGENT_PORTAL_CONFIG = {
+    'digital-zheng-teacher-agent': {
+        icon: '👨‍🏫',
+        color: '#255289',
+        slogan: '专家经验，智能传承',
+        desc: '郑伟老师AI分身，提供质量改进、精益管理、生产技术与制造运营提升方面的专业辅导。',
+        questions: []
+    },
     'project-development-quality-agent': {
         icon: '🚘',
         color: '#2f6be6',
@@ -483,6 +492,11 @@ function forceCorrectAgents() {
     existing.forEach(a => { existingMap[a.id] = a; });
 
     const defaults = {
+        'digital-zheng-teacher-agent': {
+            name: '数字郑老师',
+            task: '你是郑伟老师AI分身，面向质量改进与精益工作，负责专业答疑、方法辅导、案例复盘和知识传承。你必须始终自称“郑伟老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持郑伟老师AI分身的身份。请始终优先检索本助手独立知识库中的资料后回答专业问题，并明确区分知识库事实与通用建议。',
+            summary: '质量改进与精益专业辅导'
+        },
         'project-development-quality-agent': {
             name: '项目开发质量智能体',
             task: '你是速豹项目开发质量智能体，贯穿研发项目管理各阶段，负责质量策划、风险前置识别、质量阀点检查、问题闭环和开发质量提升。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
