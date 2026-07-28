@@ -15,6 +15,34 @@ def _get_users_file() -> str:
     return os.path.join(settings.DATA_DIR, "users", "users.json")
 
 
+OLD_FULL_KB_ADMIN_USERNAME = "adminquanzhi"
+FULL_KB_ADMIN_USERNAME = "adminsubao"
+
+
+def _migrate_user_owned_files(old_username: str, new_username: str) -> None:
+    """迁移账号改名后按用户名保存的聊天索引和智能体配置。"""
+    app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    file_pairs = [
+        (
+            os.path.join(settings.DATA_DIR, "users", f"{old_username}_chats.json"),
+            os.path.join(settings.DATA_DIR, "users", f"{new_username}_chats.json"),
+        ),
+        (
+            os.path.join(app_dir, "data", "agents", f"{old_username}.json"),
+            os.path.join(app_dir, "data", "agents", f"{new_username}.json"),
+        ),
+    ]
+    for old_path, new_path in file_pairs:
+        if not os.path.exists(old_path) or os.path.exists(new_path):
+            continue
+        try:
+            os.makedirs(os.path.dirname(new_path), exist_ok=True)
+            os.replace(old_path, new_path)
+        except OSError:
+            # 迁移文件失败不能阻断登录；管理员可在服务器上手工处理遗留文件。
+            pass
+
+
 def _load_users() -> dict:
     """加载用户数据"""
     users_file = _get_users_file()
@@ -23,12 +51,19 @@ def _load_users() -> dict:
             users = json.load(f)
         # 账号迁移：删除旧 dfsr1，并确保三个正式账号存在且角色正确
         changed = False
+        # 账号改名：保留原 adminquanzhi 的密码和角色，并迁移其聊天索引与智能体配置。
+        if OLD_FULL_KB_ADMIN_USERNAME in users:
+            if FULL_KB_ADMIN_USERNAME not in users:
+                users[FULL_KB_ADMIN_USERNAME] = users[OLD_FULL_KB_ADMIN_USERNAME]
+            del users[OLD_FULL_KB_ADMIN_USERNAME]
+            changed = True
+        _migrate_user_owned_files(OLD_FULL_KB_ADMIN_USERNAME, FULL_KB_ADMIN_USERNAME)
         if "dfsr1" in users:
             del users["dfsr1"]
             changed = True
         required_users = {
             "admin": ("admin123", "admin"),
-            "adminquanzhi": ("quanzhi123", "admin"),
+            "adminsubao": ("quanzhi123", "admin"),
             "user01": ("jluser1", "user"),
         }
         for username, (default_password, required_role) in required_users.items():
@@ -44,7 +79,7 @@ def _load_users() -> dict:
                 changed = True
         # 一次性迁移上一版本生成的临时密码；已被管理员改过的密码保持不变
         password_migrations = {
-            "adminquanzhi": ("AdminQZ2026!", "quanzhi123"),
+            "adminsubao": ("AdminQZ2026!", "quanzhi123"),
             "user01": ("User012026!", "jluser1"),
         }
         for username, (old_password, new_password) in password_migrations.items():
@@ -72,7 +107,7 @@ def _load_users() -> dict:
             "password_plain": "admin123",
             "role": "admin",
         },
-        "adminquanzhi": {
+        "adminsubao": {
             "password_hash": _hash_password("quanzhi123"),
             "password_plain": "quanzhi123",
             "role": "admin",

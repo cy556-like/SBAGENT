@@ -365,7 +365,7 @@ def require_admin(request: Request) -> str:
 
 DIGITAL_TEACHER_AGENT_ID = "digital-zheng-teacher-agent"
 DIGITAL_TEACHER_AGENT_SUFFIX = "-digital-zheng-teacher-agent"
-FULL_KB_ADMIN_USERNAME = "adminquanzhi"
+FULL_KB_ADMIN_USERNAME = "adminsubao"
 LIMITED_KB_ADMIN_USERNAME = "admin"
 
 

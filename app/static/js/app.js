@@ -28,7 +28,7 @@ let selectedSkill = null;  // 当前选中的技能（如 '8d-skill'）
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const DIGITAL_TEACHER_AGENT_ID = 'digital-zheng-teacher-agent';
 const DIGITAL_TEACHER_AGENT_SUFFIX = '-digital-zheng-teacher-agent';
-const FULL_KB_ADMIN_USERNAME = 'adminquanzhi';
+const FULL_KB_ADMIN_USERNAME = 'adminsubao';
 
 function isDigitalTeacherAgent(agentId) {
     return Boolean(agentId && (
