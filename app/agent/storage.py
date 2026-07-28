@@ -45,6 +45,11 @@ SUBAGENT_IDS = [
     for index in range(1, count + 1)
 ]
 
+WORKSPACE_TEACHER_IDS = [
+    f'{workspace_id}-digital-zheng-teacher-agent'
+    for workspace_id, _ in WORKSPACE_SUBAGENT_COUNTS
+]
+
 # 保留旧版七个大智能体 ID，避免已有配置被服务端清理；它们不再显示在聊天侧边栏。
 LEGACY_WORKSPACE_AGENT_IDS = [
     workspace_id for workspace_id, _ in WORKSPACE_SUBAGENT_COUNTS
@@ -53,14 +58,16 @@ LEGACY_WORKSPACE_AGENT_IDS = [
 # 允许的智能体 ID 白名单。
 ALLOWED_AGENT_IDS = {
     'digital-zheng-teacher-agent',
+    *WORKSPACE_TEACHER_IDS,
     *SUBAGENT_IDS,
     *LEGACY_WORKSPACE_AGENT_IDS,
 }
 
-# 固定排序：数字郑老师、71 个子智能体、旧版隐藏大智能体。
+# 固定排序：七个工作区各自的数字郑老师、71 个子智能体、旧版隐藏智能体。
 AGENT_SORT_ORDER = [
-    'digital-zheng-teacher-agent',
+    *WORKSPACE_TEACHER_IDS,
     *SUBAGENT_IDS,
+    'digital-zheng-teacher-agent',
     *LEGACY_WORKSPACE_AGENT_IDS,
 ]
 

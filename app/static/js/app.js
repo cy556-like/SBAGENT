@@ -27,16 +27,27 @@ let currentMode = 'agent';
 let selectedSkill = null;  // 当前选中的技能（如 '8d-skill'）
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const DIGITAL_TEACHER_AGENT_ID = 'digital-zheng-teacher-agent';
+const DIGITAL_TEACHER_AGENT_SUFFIX = '-digital-zheng-teacher-agent';
 const FULL_KB_ADMIN_USERNAME = 'adminquanzhi';
 
+function isDigitalTeacherAgent(agentId) {
+    return Boolean(agentId && (
+        agentId === DIGITAL_TEACHER_AGENT_ID ||
+        agentId.endsWith(DIGITAL_TEACHER_AGENT_SUFFIX)
+    ));
+}
+
 function canUploadKnowledgeBase(agentId = currentAgentId) {
-    return Boolean(currentUser && agentId && (currentUser === FULL_KB_ADMIN_USERNAME || agentId !== DIGITAL_TEACHER_AGENT_ID));
+    return Boolean(currentUser && agentId && (
+        currentUser === FULL_KB_ADMIN_USERNAME ||
+        !isDigitalTeacherAgent(agentId)
+    ));
 }
 
 function canDeleteKnowledgeBase(agentId = currentAgentId) {
     return Boolean(currentUser && agentId && (
         currentUser === FULL_KB_ADMIN_USERNAME ||
-        (currentUser === 'admin' && agentId !== DIGITAL_TEACHER_AGENT_ID)
+        (currentUser === 'admin' && !isDigitalTeacherAgent(agentId))
     ));
 }
 
@@ -51,18 +62,32 @@ let _lastSyncedAgentsHash = '';
 const WORKSPACE_CONFIG = window.SUBAO_WORKSPACE_CONFIG || {};
 const SUBAGENT_CONFIG_BY_ID = window.SUBAO_SUBAGENT_INDEX || {};
 const PORTAL_AGENT_IDS = Object.keys(WORKSPACE_CONFIG);
+const WORKSPACE_TEACHER_AGENT_IDS = PORTAL_AGENT_IDS.map(
+    workspaceId => `${workspaceId}${DIGITAL_TEACHER_AGENT_SUFFIX}`
+);
+const TEACHER_WORKSPACE_BY_ID = Object.fromEntries(
+    PORTAL_AGENT_IDS.map(workspaceId => [
+        `${workspaceId}${DIGITAL_TEACHER_AGENT_SUFFIX}`,
+        workspaceId
+    ])
+);
+
+function getWorkspaceTeacherAgentId(workspaceId) {
+    return workspaceId ? `${workspaceId}${DIGITAL_TEACHER_AGENT_SUFFIX}` : null;
+}
 
 // 侧边栏内置智能体：数字郑老师固定置顶，其余为当前工作空间的专属子智能体。
 // 所有子智能体都有永久且唯一的 agent_id，聊天记录和知识库均按此 ID 隔离。
 const ALLOWED_AGENT_IDS = [
-    DIGITAL_TEACHER_AGENT_ID,
+    ...WORKSPACE_TEACHER_AGENT_IDS,
     ...Object.keys(SUBAGENT_CONFIG_BY_ID)
 ];
 
 // 内置助手名称统一由代码控制，避免浏览器旧缓存或服务端旧数据恢复历史名称。
-const BUILTIN_AGENT_NAMES = {
-    [DIGITAL_TEACHER_AGENT_ID]: '数字郑老师'
-};
+const BUILTIN_AGENT_NAMES = {};
+WORKSPACE_TEACHER_AGENT_IDS.forEach(agentId => {
+    BUILTIN_AGENT_NAMES[agentId] = '数字郑老师';
+});
 Object.values(SUBAGENT_CONFIG_BY_ID).forEach(subagent => {
     BUILTIN_AGENT_NAMES[subagent.id] = subagent.name;
 });
@@ -431,13 +456,16 @@ function forceCorrectAgents() {
     const existingMap = {};
     existing.forEach(a => { existingMap[a.id] = a; });
 
-    const defaults = {
-        'digital-zheng-teacher-agent': {
+    const defaults = {};
+    WORKSPACE_TEACHER_AGENT_IDS.forEach(agentId => {
+        const workspaceId = TEACHER_WORKSPACE_BY_ID[agentId];
+        const workspaceName = WORKSPACE_CONFIG[workspaceId]?.name || '质量管理智能体';
+        defaults[agentId] = {
             name: '数字郑老师',
-            task: '你是郑伟老师AI分身，面向质量改进与精益工作，负责专业答疑、方法辅导、案例复盘和知识传承。你必须始终自称“郑伟老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持郑伟老师AI分身的身份。请始终优先检索本助手独立知识库中的资料后回答专业问题，并明确区分知识库事实与通用建议。',
+            task: `你是“${workspaceName}”工作区内的郑伟老师AI分身，面向质量改进与精益工作，负责专业答疑、方法辅导、案例复盘和知识传承。你必须始终自称“郑伟老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持郑伟老师AI分身的身份。请始终优先检索本工作区内数字郑老师的独立知识库后回答专业问题，不得读取其他工作区数字郑老师或其他智能体的知识库，并明确区分知识库事实与通用建议。`,
             summary: '质量改进与精益专业辅导'
-        }
-    };
+        };
+    });
     Object.values(SUBAGENT_CONFIG_BY_ID).forEach(subagent => {
         const capabilityText = (subagent.capabilities || []).join('、');
         defaults[subagent.id] = {
@@ -804,6 +832,8 @@ async function switchToAgent(agentId) {
     const subagentConfig = SUBAGENT_CONFIG_BY_ID[agentId];
     if (subagentConfig) {
         currentWorkspaceId = subagentConfig.workspaceId;
+    } else if (TEACHER_WORKSPACE_BY_ID[agentId]) {
+        currentWorkspaceId = TEACHER_WORKSPACE_BY_ID[agentId];
     }
     const kbPage = document.getElementById('kbPage');
     const wasKbPageOpen = Boolean(kbPage && kbPage.style.display !== 'none');
@@ -866,9 +896,9 @@ function renderMyAgents() {
 
     const workspace = WORKSPACE_CONFIG[currentWorkspaceId];
     const visibleAgentIds = [
-        DIGITAL_TEACHER_AGENT_ID,
+        getWorkspaceTeacherAgentId(currentWorkspaceId),
         ...((workspace && workspace.subagents) ? workspace.subagents.map(item => item.id) : [])
-    ];
+    ].filter(Boolean);
     const visibleAgents = visibleAgentIds
         .map(agentId => myAgents.find(agent => agent.id === agentId))
         .filter(Boolean);
@@ -1771,7 +1801,7 @@ function updateWelcomeContent() {
     const welcomeEl = document.getElementById('welcomeCenter');
     if (!welcomeEl) return;
 
-    const isZhengTeacher = currentAgentId === DIGITAL_TEACHER_AGENT_ID;
+    const isZhengTeacher = isDigitalTeacherAgent(currentAgentId);
     const isSubagent = Boolean(currentAgentId && SUBAGENT_CONFIG_BY_ID[currentAgentId]);
     welcomeEl.classList.toggle('zheng-profile-mode', isZhengTeacher);
     welcomeEl.classList.toggle('subagent-profile-mode', isSubagent);
@@ -2158,6 +2188,8 @@ async function switchChat(chatId) {
         const subagent = SUBAGENT_CONFIG_BY_ID[belongsToAgent];
         if (subagent) {
             currentWorkspaceId = subagent.workspaceId;
+        } else if (TEACHER_WORKSPACE_BY_ID[belongsToAgent]) {
+            currentWorkspaceId = TEACHER_WORKSPACE_BY_ID[belongsToAgent];
         }
         agentActiveChatId[currentAgentId] = chatId;
         saveAgentActiveChatIds();
