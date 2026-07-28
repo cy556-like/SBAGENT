@@ -27,29 +27,41 @@ def _user_file(username: str) -> str:
     return os.path.join(AGENTS_DIR, f"{username}.json")
 
 
-# 允许的智能体ID白名单（顺序与前端 ALLOWED_AGENT_IDS 保持一致）
-# 顺序即侧边栏固定显示顺序
+# 七个质量工作空间及各自子智能体数量。
+# 子智能体 ID 与前端 subagents-data.js 的生成规则保持一致。
+WORKSPACE_SUBAGENT_COUNTS = [
+    ('project-development-quality-agent', 11),
+    ('process-quality-control-agent', 9),
+    ('supplier-quality-agent', 11),
+    ('aftersales-quality-agent', 10),
+    ('quality-system-agent', 10),
+    ('measurement-laboratory-agent', 10),
+    ('continuous-improvement-agent', 10),
+]
+
+SUBAGENT_IDS = [
+    f'{workspace_id}-sub-{index:02d}'
+    for workspace_id, count in WORKSPACE_SUBAGENT_COUNTS
+    for index in range(1, count + 1)
+]
+
+# 保留旧版七个大智能体 ID，避免已有配置被服务端清理；它们不再显示在聊天侧边栏。
+LEGACY_WORKSPACE_AGENT_IDS = [
+    workspace_id for workspace_id, _ in WORKSPACE_SUBAGENT_COUNTS
+]
+
+# 允许的智能体 ID 白名单。
 ALLOWED_AGENT_IDS = {
     'digital-zheng-teacher-agent',
-    'project-development-quality-agent',
-    'process-quality-control-agent',
-    'supplier-quality-agent',
-    'aftersales-quality-agent',
-    'quality-system-agent',
-    'measurement-laboratory-agent',
-    'continuous-improvement-agent',
+    *SUBAGENT_IDS,
+    *LEGACY_WORKSPACE_AGENT_IDS,
 }
 
-# 固定排序顺序列表（与前端 ALLOWED_AGENT_IDS 数组顺序一致）
+# 固定排序：数字郑老师、71 个子智能体、旧版隐藏大智能体。
 AGENT_SORT_ORDER = [
     'digital-zheng-teacher-agent',
-    'project-development-quality-agent',
-    'process-quality-control-agent',
-    'supplier-quality-agent',
-    'aftersales-quality-agent',
-    'quality-system-agent',
-    'measurement-laboratory-agent',
-    'continuous-improvement-agent',
+    *SUBAGENT_IDS,
+    *LEGACY_WORKSPACE_AGENT_IDS,
 ]
 
 

@@ -48,95 +48,26 @@ const _SYNC_AGENTS_COOLDOWN = 5000;  // 5秒内不重复同步
 let _lastSyncedAgentsHash = '';
 
 // ===== Agent Management =====
-// 允许的智能体ID白名单（与后端 storage.py 保持一致）
-// 顺序即侧边栏固定显示顺序，点击等操作不会改变
+const WORKSPACE_CONFIG = window.SUBAO_WORKSPACE_CONFIG || {};
+const SUBAGENT_CONFIG_BY_ID = window.SUBAO_SUBAGENT_INDEX || {};
+const PORTAL_AGENT_IDS = Object.keys(WORKSPACE_CONFIG);
+
+// 侧边栏内置智能体：数字郑老师固定置顶，其余为当前工作空间的专属子智能体。
+// 所有子智能体都有永久且唯一的 agent_id，聊天记录和知识库均按此 ID 隔离。
 const ALLOWED_AGENT_IDS = [
-    'digital-zheng-teacher-agent',
-    'project-development-quality-agent',
-    'process-quality-control-agent',
-    'supplier-quality-agent',
-    'aftersales-quality-agent',
-    'quality-system-agent',
-    'measurement-laboratory-agent',
-    'continuous-improvement-agent',
+    DIGITAL_TEACHER_AGENT_ID,
+    ...Object.keys(SUBAGENT_CONFIG_BY_ID)
 ];
 
-// 登录后的入口页只展示 7 个业务智能体。
-// 数字郑老师沿用 JLAGENT 的结构：仅在进入聊天页后的侧边栏置顶显示。
-const PORTAL_AGENT_IDS = ALLOWED_AGENT_IDS.filter(
-    agentId => agentId !== DIGITAL_TEACHER_AGENT_ID
-);
-
-// 内置助手名称统一由代码控制，避免浏览器旧缓存或服务端旧数据恢复历史名称
+// 内置助手名称统一由代码控制，避免浏览器旧缓存或服务端旧数据恢复历史名称。
 const BUILTIN_AGENT_NAMES = {
-    'digital-zheng-teacher-agent': '数字郑老师',
-    'project-development-quality-agent': '项目开发质量智能体',
-    'process-quality-control-agent': '过程质量管控智能体',
-    'supplier-quality-agent': '供应商质量智能体',
-    'aftersales-quality-agent': '售后质量智能体',
-    'quality-system-agent': '体系智能体',
-    'measurement-laboratory-agent': '测量与实验室智能体',
-    'continuous-improvement-agent': '持续改进智能体',
+    [DIGITAL_TEACHER_AGENT_ID]: '数字郑老师'
 };
+Object.values(SUBAGENT_CONFIG_BY_ID).forEach(subagent => {
+    BUILTIN_AGENT_NAMES[subagent.id] = subagent.name;
+});
 
-const AGENT_PORTAL_CONFIG = {
-    'digital-zheng-teacher-agent': {
-        icon: '👨‍🏫',
-        color: '#255289',
-        slogan: '专家经验，智能传承',
-        desc: '郑伟老师AI分身，提供质量改进、精益管理、生产技术与制造运营提升方面的专业辅导。',
-        questions: []
-    },
-    'project-development-quality-agent': {
-        icon: '🚘',
-        color: '#2f6be6',
-        slogan: '前置拦截，缩短周期',
-        desc: '贯穿研发项目管理的各个阶段，提高研发效率，智能管控研发全流程质量。',
-        questions: ['如何建立项目开发质量策划清单？', '帮我梳理新项目质量风险和前置拦截措施。', '如何设置开发阶段质量阀点？', '请给出项目质量问题闭环跟踪模板。']
-    },
-    'process-quality-control-agent': {
-        icon: '⚙️',
-        color: '#168b83',
-        slogan: '稳质降废，提效减损',
-        desc: '快速分析处理过程中的质量问题，判定波动并协助进行闭环处置。',
-        questions: ['如何快速判断过程质量波动来源？', '帮我制定现场异常分层响应流程。', '如何分析过程能力不足问题？', '请给出过程质量闭环检查清单。']
-    },
-    'supplier-quality-agent': {
-        icon: '🔗',
-        color: '#b4771f',
-        slogan: '严控源头，减少问题',
-        desc: '全周期管控供应商质量，智能评级预警，协同处置来料异常风险。',
-        questions: ['如何建立供应商质量分级评价机制？', '帮我分析一起来料异常并制定处置方案。', '供应商质量预警指标应该如何设置？', '请给出供应商问题整改跟踪模板。']
-    },
-    'aftersales-quality-agent': {
-        icon: '🛡️',
-        color: '#d14a52',
-        slogan: '降低索赔，提升口碑',
-        desc: '根据售后质量的庞大信息进行分析，得出故障模式、趋势统计等结论。',
-        questions: ['如何从售后数据中识别高频故障模式？', '帮我设计售后质量问题聚类分析方法。', '如何确定售后改进项目优先级？', '请给出售后质量趋势分析框架。']
-    },
-    'quality-system-agent': {
-        icon: '📚',
-        color: '#7856d8',
-        slogan: '合规提效，体系落地',
-        desc: '智能管理体系文件，监控合规运行，支撑内审外审持续优化。',
-        questions: ['如何搭建质量管理体系文件清单？', '帮我准备一次内部质量审核。', '如何跟踪体系不符合项闭环？', '请给出管理评审输入输出检查表。']
-    },
-    'measurement-laboratory-agent': {
-        icon: '🔬',
-        color: '#2387b8',
-        slogan: '精准测量，高效可靠',
-        desc: '管控测量与实验全流程，校核数据，保障检测结果精准可信。',
-        questions: ['如何制定测量设备校准和期间核查计划？', '帮我判断测量系统分析结果是否合格。', '实验室数据异常应该如何复核？', '请给出检测结果有效性检查清单。']
-    },
-    'continuous-improvement-agent': {
-        icon: '📈',
-        color: '#1a9b62',
-        slogan: '质效跃升，持续精进（可试用）',
-        desc: '挖掘质量痛点，驱动改进项目实施，追踪进度并实现闭环。',
-        questions: ['如何识别最值得立项的持续改进课题？', '帮我用PDCA制定改进项目计划。', '如何验证改进措施的长期有效性？', '请给出持续改进项目闭环模板。']
-    }
-};
+const AGENT_PORTAL_CONFIG = WORKSPACE_CONFIG;
 
 // 按 ALLOWED_AGENT_IDS 定义的顺序排序智能体列表（保证侧边栏顺序永远固定）
 function sortAgentsByFixedOrder(agents) {
@@ -471,12 +402,15 @@ const AGENT_WELCOME_CONFIG = {
 
 // 获取智能体欢迎页配置（内置+自定义智能体）
 function getAgentWelcomeConfig(agentId) {
-    if (AGENT_PORTAL_CONFIG[agentId]) {
-        const config = AGENT_PORTAL_CONFIG[agentId];
+    if (SUBAGENT_CONFIG_BY_ID[agentId]) {
+        const config = SUBAGENT_CONFIG_BY_ID[agentId];
         return {
-            name: BUILTIN_AGENT_NAMES[agentId],
+            kind: 'subagent',
+            name: config.name,
             desc: config.desc,
-            questions: config.questions
+            capabilities: config.capabilities || [],
+            workspaceId: config.workspaceId,
+            workspaceName: config.workspaceName
         };
     }
     if (AGENT_WELCOME_CONFIG[agentId]) return AGENT_WELCOME_CONFIG[agentId];
@@ -502,43 +436,16 @@ function forceCorrectAgents() {
             name: '数字郑老师',
             task: '你是郑伟老师AI分身，面向质量改进与精益工作，负责专业答疑、方法辅导、案例复盘和知识传承。你必须始终自称“郑伟老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持郑伟老师AI分身的身份。请始终优先检索本助手独立知识库中的资料后回答专业问题，并明确区分知识库事实与通用建议。',
             summary: '质量改进与精益专业辅导'
-        },
-        'project-development-quality-agent': {
-            name: '项目开发质量智能体',
-            task: '你是速豹项目开发质量智能体，贯穿研发项目管理各阶段，负责质量策划、风险前置识别、质量阀点检查、问题闭环和开发质量提升。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
-            summary: '前置拦截，缩短周期'
-        },
-        'process-quality-control-agent': {
-            name: '过程质量管控智能体',
-            task: '你是速豹过程质量管控智能体，负责制造过程质量波动识别、异常分析、过程能力评价、现场处置和闭环验证。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
-            summary: '稳质降废，提效减损'
-        },
-        'supplier-quality-agent': {
-            name: '供应商质量智能体',
-            task: '你是速豹供应商质量智能体，负责供应商全周期质量管理、绩效评价、风险预警、来料异常协同处置和整改闭环。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
-            summary: '严控源头，减少问题'
-        },
-        'aftersales-quality-agent': {
-            name: '售后质量智能体',
-            task: '你是速豹售后质量智能体，负责售后质量信息分析、故障模式识别、趋势统计、索赔风险判断和改进项目推动。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
-            summary: '降低索赔，提升口碑'
-        },
-        'quality-system-agent': {
-            name: '体系智能体',
-            task: '你是速豹体系智能体，负责质量管理体系文件、合规运行、内外部审核、不符合项闭环和体系持续优化。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
-            summary: '合规提效，体系落地'
-        },
-        'measurement-laboratory-agent': {
-            name: '测量与实验室智能体',
-            task: '你是速豹测量与实验室智能体，负责测量设备、测量系统分析、实验流程、检测数据复核和结果有效性保障。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
-            summary: '精准测量，高效可靠'
-        },
-        'continuous-improvement-agent': {
-            name: '持续改进智能体',
-            task: '你是速豹持续改进智能体，负责质量痛点识别、改进课题策划、PDCA推进、措施验证、成效固化和闭环追踪。回答专业问题时必须优先检索本智能体独立知识库，不得引用其他智能体的知识库内容。',
-            summary: '质效跃升，持续精进'
         }
     };
+    Object.values(SUBAGENT_CONFIG_BY_ID).forEach(subagent => {
+        const capabilityText = (subagent.capabilities || []).join('、');
+        defaults[subagent.id] = {
+            name: subagent.name,
+            task: `你是速豹“${subagent.name}”，隶属于“${subagent.workspaceName}”。你的职责是：${subagent.desc}。可使用或展示的能力包括：${capabilityText}。回答专业问题时必须优先检索本子智能体的独立知识库，不得引用其他智能体的知识库内容。飞书协同目前仅为规划展示，不得声称已经连接、发送或创建飞书消息、日程、待办或会议。`,
+            summary: subagent.desc
+        };
+    });
 
     const correctAgents = Object.keys(defaults).map(id => {
         const def = defaults[id];
@@ -573,6 +480,7 @@ function filterAgents(agents) {
 
 let myAgents = filterAgents((function() { try { return JSON.parse(localStorage.getItem('forgeAgents') || 'null'); } catch(e) { return null; } })());
 let currentAgentId = null;
+let currentWorkspaceId = null;
 let agentKbUploadMode = false;
 
 function renderAgentPortal() {
@@ -582,15 +490,14 @@ function renderAgentPortal() {
 
     PORTAL_AGENT_IDS.forEach(agentId => {
         const config = AGENT_PORTAL_CONFIG[agentId];
-        const agent = myAgents.find(item => item.id === agentId);
-        if (!config || !agent) return;
+        if (!config) return;
 
         const card = document.createElement('article');
         card.className = 'agent-portal-card';
         card.style.setProperty('--card-accent', config.color);
         card.innerHTML = `
             <div class="agent-portal-card-icon" aria-hidden="true">${config.icon}</div>
-            <h2>${escapeHtml(agent.name)}</h2>
+            <h2>${escapeHtml(config.name)}</h2>
             <div class="agent-portal-card-slogan">${escapeHtml(config.slogan)}</div>
             <p class="agent-portal-card-desc">${escapeHtml(config.desc)}</p>
             <button class="agent-portal-enter" type="button" data-agent-id="${escapeHtml(agentId)}">进入 →</button>
@@ -605,6 +512,8 @@ function showAgentPortal(pushHistory = true) {
     if (!currentUser || !authToken) return;
 
     stopGeneration();
+    currentWorkspaceId = null;
+    currentAgentId = null;
     const portal = document.getElementById('agentPortalPage');
     const chatPage = document.getElementById('chatPage');
     const kbPage = document.getElementById('kbPage');
@@ -627,8 +536,10 @@ function showAgentPortal(pushHistory = true) {
     }
 }
 
-async function enterAgentFromPortal(agentId, pushHistory = true) {
-    if (!currentUser || !authToken || !ALLOWED_AGENT_IDS.includes(agentId)) return;
+async function enterAgentFromPortal(workspaceId, pushHistory = true) {
+    const workspace = WORKSPACE_CONFIG[workspaceId];
+    const firstSubagent = workspace && workspace.subagents && workspace.subagents[0];
+    if (!currentUser || !authToken || !workspace || !firstSubagent) return;
 
     const portal = document.getElementById('agentPortalPage');
     const chatPage = document.getElementById('chatPage');
@@ -637,10 +548,11 @@ async function enterAgentFromPortal(agentId, pushHistory = true) {
     document.body.classList.remove('body-portal-mode');
     document.body.classList.add('body-chat-mode');
 
-    await switchToAgent(agentId);
+    currentWorkspaceId = workspaceId;
+    await switchToAgent(firstSubagent.id);
 
     if (pushHistory) {
-        history.pushState({page: 'chat', agentId: agentId}, '');
+        history.pushState({page: 'chat', workspaceId: workspaceId, agentId: firstSubagent.id}, '');
     }
 }
 
@@ -889,6 +801,10 @@ function deleteAgent(agentId) {
 async function switchToAgent(agentId) {
     const agent = myAgents.find(a => a.id === agentId);
     if (!agent) return;
+    const subagentConfig = SUBAGENT_CONFIG_BY_ID[agentId];
+    if (subagentConfig) {
+        currentWorkspaceId = subagentConfig.workspaceId;
+    }
     const kbPage = document.getElementById('kbPage');
     const wasKbPageOpen = Boolean(kbPage && kbPage.style.display !== 'none');
 
@@ -938,7 +854,7 @@ async function switchToAgent(agentId) {
     if (wasKbPageOpen) {
         kbPage.style.display = 'none';
         if (history.state && history.state.page === 'kb') {
-            history.replaceState({page: 'chat', agentId: agentId}, '');
+            history.replaceState({page: 'chat', workspaceId: currentWorkspaceId, agentId: agentId}, '');
         }
     }
 }
@@ -948,7 +864,22 @@ function renderMyAgents() {
     if (!list) return;
     list.innerHTML = '';
 
-    myAgents.forEach(agent => {
+    const workspace = WORKSPACE_CONFIG[currentWorkspaceId];
+    const visibleAgentIds = [
+        DIGITAL_TEACHER_AGENT_ID,
+        ...((workspace && workspace.subagents) ? workspace.subagents.map(item => item.id) : [])
+    ];
+    const visibleAgents = visibleAgentIds
+        .map(agentId => myAgents.find(agent => agent.id === agentId))
+        .filter(Boolean);
+
+    visibleAgents.forEach((agent, index) => {
+        if (index === 1 && workspace) {
+            const divider = document.createElement('div');
+            divider.className = 'agent-group-divider subagent-workspace-divider';
+            divider.textContent = `${workspace.name}：`;
+            list.appendChild(divider);
+        }
         const item = document.createElement('div');
         item.className = `agent-item${agent.id === currentAgentId ? ' active' : ''}`;
         item.setAttribute('data-agent-id', agent.id);
@@ -980,7 +911,7 @@ function renderMyAgents() {
             const aid = agentItem.getAttribute('data-agent-id');
             if (aid) {
                 await switchToAgent(aid);
-                history.replaceState({page: 'chat', agentId: aid}, '');
+                history.replaceState({page: 'chat', workspaceId: currentWorkspaceId, agentId: aid}, '');
                 closeSidebarOnMobile();
             }
         }
@@ -1632,13 +1563,14 @@ async function doLogin() {
                 loadChatList();
                 const modelLoadPromise = loadModels();
                 await syncAgentsFromServer(true);  // [#12] 登录时强制同步一次，内部已调用 rebuildChatIdsFromServer（会GET /chats）
-                await saveAgents();  // 将新的7个固定智能体写回服务端，清理旧站点智能体配置
+                await saveAgents();  // 将数字郑老师和71个固定子智能体写回服务端
                 await modelLoadPromise;
                 renderMyAgents();
                 renderAgentPortal();
                 updateKbUploadVisibility();
                 updateHeaderKbVisibility();
                 currentAgentId = null;
+                currentWorkspaceId = null;
                 // 登录成功后先进入7个智能体的选择页
                 document.getElementById('loginModal').classList.remove('show');
                 showAgentPortal(false);
@@ -1654,7 +1586,7 @@ async function doRegister() {
 }
 
 function doLogout() {
-    currentUser = null; userRole = null; authToken = null; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; agentKbUploadMode = false;
+    currentUser = null; userRole = null; authToken = null; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; currentWorkspaceId = null; agentKbUploadMode = false;
     localStorage.removeItem('authToken');
     localStorage.removeItem('userRole');
     // Hide KB page if open
@@ -1718,8 +1650,13 @@ window.addEventListener('popstate', async function(e) {
             chatPage.style.display = 'flex';
             document.body.classList.remove('body-portal-mode');
             document.body.classList.add('body-chat-mode');
+            if (e.state.workspaceId && WORKSPACE_CONFIG[e.state.workspaceId]) {
+                currentWorkspaceId = e.state.workspaceId;
+            }
             if (e.state.agentId && e.state.agentId !== currentAgentId) {
                 await switchToAgent(e.state.agentId);
+            } else {
+                renderMyAgents();
             }
             // [BUG FIX] 如果从知识库返回，关闭知识库页，恢复聊天页
             if (kbPage) kbPage.style.display = 'none';
@@ -1737,6 +1674,12 @@ window.addEventListener('popstate', async function(e) {
         }
     } else if (e.state && e.state.page === 'kb') {
         // 前进到知识库页（用户按了前进按钮）
+        if (e.state.workspaceId && WORKSPACE_CONFIG[e.state.workspaceId]) {
+            currentWorkspaceId = e.state.workspaceId;
+        }
+        if (e.state.agentId && e.state.agentId !== currentAgentId) {
+            await switchToAgent(e.state.agentId);
+        }
         if (currentUser && authToken && currentAgentId) {
             loginModal.classList.remove('show');
             if (agentPortalPage) agentPortalPage.style.display = 'none';
@@ -1756,7 +1699,7 @@ window.addEventListener('popstate', async function(e) {
         // Back to login - perform logout to ensure clean state
         if (currentUser) {
             // Clear session but don't push another history entry
-            currentUser = null; userRole = null; authToken = null; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; agentKbUploadMode = false;
+            currentUser = null; userRole = null; authToken = null; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; currentWorkspaceId = null; agentKbUploadMode = false;
             localStorage.removeItem('authToken');
             localStorage.removeItem('userRole');
             if (kbPage) kbPage.style.display = 'none';
@@ -1800,6 +1743,7 @@ async function tryAutoLogin() {
             updateKbUploadVisibility();
             updateHeaderKbVisibility();
             currentAgentId = null;
+            currentWorkspaceId = null;
             document.getElementById('loginModal').classList.remove('show');
             showAgentPortal(false);
             history.pushState({page: 'portal'}, '');
@@ -1828,9 +1772,14 @@ function updateWelcomeContent() {
     if (!welcomeEl) return;
 
     const isZhengTeacher = currentAgentId === DIGITAL_TEACHER_AGENT_ID;
+    const isSubagent = Boolean(currentAgentId && SUBAGENT_CONFIG_BY_ID[currentAgentId]);
     welcomeEl.classList.toggle('zheng-profile-mode', isZhengTeacher);
+    welcomeEl.classList.toggle('subagent-profile-mode', isSubagent);
     const chatContent = welcomeEl.closest('.chat-content');
-    if (chatContent) chatContent.classList.toggle('zheng-welcome-active', isZhengTeacher);
+    if (chatContent) {
+        chatContent.classList.toggle('zheng-welcome-active', isZhengTeacher);
+        chatContent.classList.toggle('subagent-welcome-active', isSubagent);
+    }
     if (isZhengTeacher) {
         renderZhengTeacherWelcome(welcomeEl);
         return;
@@ -1839,6 +1788,10 @@ function updateWelcomeContent() {
     const config = currentAgentId ? getAgentWelcomeConfig(currentAgentId) : null;
 
     if (config) {
+        if (config.kind === 'subagent') {
+            renderSubagentWelcome(welcomeEl, config);
+            return;
+        }
         // 将20个按钮分配到5行，每行至少2个，贪心平衡行宽
         const questions = config.questions;
         const NUM_ROWS = 5;
@@ -1969,6 +1922,46 @@ function updateWelcomeContent() {
             </div>
         `;
     }
+}
+
+function renderSubagentWelcome(welcomeEl, config) {
+    const workMethod = window.SUBAO_WORK_METHOD || { phaseOne: '', phaseTwo: [] };
+    const capabilityHtml = (config.capabilities || []).map(capability => {
+        const isPlanned = capability.includes('飞书');
+        return `
+            <span class="subagent-capability${isPlanned ? ' planned' : ''}">
+                ${escapeHtml(capability)}
+            </span>`;
+    }).join('');
+    const phaseTwoHtml = (workMethod.phaseTwo || [])
+        .map(item => `<li>${escapeHtml(item)}</li>`)
+        .join('');
+
+    welcomeEl.innerHTML = `
+        <section class="subagent-welcome" aria-label="${escapeHtml(config.name)}介绍">
+            <div class="subagent-workspace-label">${escapeHtml(config.workspaceName)}</div>
+            <h2 class="subagent-welcome-name">${escapeHtml(config.name)}</h2>
+            <p class="subagent-welcome-desc">${escapeHtml(config.desc)}</p>
+
+            <div class="subagent-capability-section">
+                <h3>本智能体均基于现有能力，包括：</h3>
+                <div class="subagent-capability-list">${capabilityHtml}</div>
+            </div>
+
+            <div class="subagent-method-card">
+                <h3>工作方式</h3>
+                <div class="subagent-method-phase">
+                    <strong>第一阶段</strong>
+                    <p>${escapeHtml(workMethod.phaseOne || '')}</p>
+                </div>
+                <div class="subagent-method-phase future">
+                    <strong>第二阶段</strong>
+                    <ol>${phaseTwoHtml}</ol>
+                </div>
+            </div>
+
+            <p class="subagent-kb-hint">只有在知识库丰富且准确时，智能体才能发挥最大作用。</p>
+        </section>`;
 }
 
 // 数字郑老师不显示关键词问题，使用人物资料卡专属欢迎页。
@@ -2162,8 +2155,18 @@ async function switchChat(chatId) {
     });
     if (belongsToAgent) {
         currentAgentId = belongsToAgent;
+        const subagent = SUBAGENT_CONFIG_BY_ID[belongsToAgent];
+        if (subagent) {
+            currentWorkspaceId = subagent.workspaceId;
+        }
         agentActiveChatId[currentAgentId] = chatId;
         saveAgentActiveChatIds();
+        renderMyAgents();
+        history.replaceState({
+            page: 'chat',
+            workspaceId: currentWorkspaceId,
+            agentId: currentAgentId
+        }, '');
     }
 
     renderChatList();
@@ -3611,7 +3614,7 @@ async function showKbPage() {
     if (sidebarOverlay) sidebarOverlay.style.display = 'none';
     const docsLoadPromise = updateKbPageForCurrentAgent();
     // [BUG FIX] 推入历史状态，让浏览器←按钮能回到聊天页
-    history.pushState({page: 'kb'}, '');
+    history.pushState({page: 'kb', workspaceId: currentWorkspaceId, agentId: currentAgentId}, '');
     // Setup drag and drop
     setupKbPageDragDrop();
     await docsLoadPromise;
