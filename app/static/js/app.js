@@ -3144,17 +3144,60 @@ async function showDocs() {
 }
 function closeDocs() { document.getElementById('docsModal').classList.remove('show'); document.getElementById('uploadProgress').style.display = 'none'; }
 
+async function fetchAllKnowledgeDocuments(agentId) {
+    if (!agentId) return [];
+    const pageSize = 100;
+    const maxPages = 1000;
+    const documents = [];
+    const seen = new Set();
+
+    for (let page = 1; page <= maxPages; page++) {
+        const query = new URLSearchParams({
+            agent_id: agentId,
+            page: String(page),
+            page_size: String(pageSize)
+        });
+        const resp = await fetch('/api/v1/documents?' + query.toString(), { headers: apiHeaders() });
+        if (!resp.ok) {
+            let detail = '知识库文档列表加载失败';
+            try {
+                const errorData = await resp.json();
+                detail = errorData.detail || errorData.message || detail;
+            } catch (_) {}
+            throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+        }
+
+        const data = await resp.json();
+        let pageDocuments = data.documents || data.files || [];
+        if (!Array.isArray(pageDocuments)) pageDocuments = [];
+        pageDocuments.forEach(doc => {
+            const name = typeof doc === 'string'
+                ? doc
+                : (doc.filename || doc.name || doc.title || '');
+            if (name && !seen.has(name)) {
+                seen.add(name);
+                documents.push(name);
+            }
+        });
+
+        const totalPages = Number(data.total_pages);
+        if (Number.isFinite(totalPages) && totalPages > 0) {
+            if (page >= totalPages) break;
+        } else if (pageDocuments.length < pageSize) {
+            break;
+        }
+    }
+    return documents;
+}
+
 async function loadDocList() {
     const list = document.getElementById('docList');
     list.innerHTML = '<div class="doc-empty">加载中...</div>';
     try {
-        // 按 agent_id 获取对应知识库的文档列表
-        const agentParam = currentAgentId ? `?agent_id=${encodeURIComponent(currentAgentId)}` : '';
-        const resp = await fetch(`/api/v1/documents${agentParam}`, { headers: apiHeaders() });
-        const data = await resp.json();
+        const documents = await fetchAllKnowledgeDocuments(currentAgentId);
         list.innerHTML = '';
-        if (data.documents && data.documents.length > 0) {
-            data.documents.forEach(doc => {
+        if (documents.length > 0) {
+            documents.forEach(doc => {
                 const item = document.createElement('div');
                 item.className = 'doc-item';
                 let icon = '📄';
@@ -3429,14 +3472,7 @@ async function loadKbDocs() {
     }
     listEl.innerHTML = '<div class="kb-empty">加载中...</div>';
     try {
-        const resp = await fetch(`/api/v1/documents?agent_id=${encodeURIComponent(currentAgentId)}`, { headers: apiHeaders() });
-        const data = await resp.json();
-        console.log('[KB] loadKbDocs response:', JSON.stringify(data));
-        // Handle multiple response formats - docs can be strings or objects
-        let docs = data.documents || data.files || [];
-        if (!Array.isArray(docs)) docs = [];
-        // Extract filenames from objects if needed
-        docs = docs.map(d => typeof d === 'string' ? d : (d.filename || d.name || d.title || String(d)));
+        const docs = await fetchAllKnowledgeDocuments(currentAgentId);
         
         if (docs.length === 0) {
             listEl.innerHTML = canUploadKnowledgeBase()
@@ -3684,11 +3720,7 @@ async function loadKbPageDocs() {
     }
     listEl.innerHTML = '<div class="kb-doc-empty">加载中...</div>';
     try {
-        const resp = await fetch('/api/v1/documents?agent_id=' + encodeURIComponent(currentAgentId), { headers: apiHeaders() });
-        const data = await resp.json();
-        let docs = data.documents || data.files || [];
-        if (!Array.isArray(docs)) docs = [];
-        docs = docs.map(d => typeof d === 'string' ? d : (d.filename || d.name || d.title || String(d)));
+        const docs = await fetchAllKnowledgeDocuments(currentAgentId);
         
         // Update stats
         document.getElementById('kbStatDocCount').textContent = docs.length;
