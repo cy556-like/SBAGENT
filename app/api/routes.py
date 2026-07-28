@@ -156,7 +156,7 @@ async def _sse_stream_wrapper(
     if cancelled_by_client:
         logger.info(f"SSE流完成（客户端主动断开）: session={session_id}")
 
-from app.rag.document import index_document, search_documents, list_indexed_documents, delete_document, update_document, delete_agent_collection, list_all_collections, load_document, export_document_as_docx, reindex_all_documents, get_indexing_mode, _get_export_dir, cleanup_export_files, _load_keyword_index, get_vector_store
+from app.rag.document import index_document, search_documents, list_indexed_documents, delete_document, update_document, delete_agent_collection, list_all_collections, load_document, export_document_as_docx, reindex_all_documents, get_indexing_mode, _get_export_dir, cleanup_export_files, _load_keyword_index, get_vector_store, normalize_knowledge_agent_id
 
 from app.auth.user_manager import login_user, register_user, get_user_role, is_admin, list_all_users, delete_user, update_user_role, reset_user_password
 
@@ -1059,7 +1059,7 @@ async def chat_with_file_stream(
 
             # 知识库模式 ON + 有 agent_id：文件存到智能体知识库目录（删对话不删除）
 
-            agent_dir = os.path.join(settings.DOCUMENTS_DIR, f"agent_{agent_id}")
+            agent_dir = os.path.join(settings.DOCUMENTS_DIR, f"agent_{normalize_knowledge_agent_id(agent_id)}")
 
             os.makedirs(agent_dir, exist_ok=True)
 
@@ -1261,7 +1261,7 @@ async def upload_document(file: UploadFile = File(...), agent_id: str = Form(Non
 
     if agent_id:
 
-        agent_dir = os.path.join(settings.DOCUMENTS_DIR, f"agent_{agent_id}")
+        agent_dir = os.path.join(settings.DOCUMENTS_DIR, f"agent_{normalize_knowledge_agent_id(agent_id)}")
 
         os.makedirs(agent_dir, exist_ok=True)
 
@@ -1407,7 +1407,7 @@ async def list_documents(
 
     if agent_id:
 
-        scan_dir = os.path.join(settings.DOCUMENTS_DIR, f"agent_{agent_id}")
+        scan_dir = os.path.join(settings.DOCUMENTS_DIR, f"agent_{normalize_knowledge_agent_id(agent_id)}")
 
     else:
 
@@ -1662,7 +1662,7 @@ async def download_document(filename: str, agent_id: str = Query(None, descripti
 
     if agent_id:
 
-        file_path = os.path.join(settings.DOCUMENTS_DIR, f"agent_{agent_id}", filename)
+        file_path = os.path.join(settings.DOCUMENTS_DIR, f"agent_{normalize_knowledge_agent_id(agent_id)}", filename)
 
     else:
 

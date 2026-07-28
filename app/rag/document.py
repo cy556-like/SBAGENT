@@ -95,6 +95,22 @@ _STOPWORDS = {'的', '了', '是', '在', '和', '与', '有', '什么', '怎么
               'used', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from'}
 
 
+# ===== 数字郑老师共享知识库 =====
+# 七个工作区保留各自的聊天 agent_id，但知识库统一映射到此 ID。
+SHARED_TEACHER_KB_AGENT_ID = "digital-zheng-teacher-agent"
+_TEACHER_WORKSPACE_AGENT_SUFFIX = "-digital-zheng-teacher-agent"
+
+
+def normalize_knowledge_agent_id(agent_id: str = None) -> str:
+    """将七个工作区的数字郑老师映射到同一个共享知识库 ID。"""
+    if agent_id and (
+        agent_id == SHARED_TEACHER_KB_AGENT_ID
+        or agent_id.endswith(_TEACHER_WORKSPACE_AGENT_SUFFIX)
+    ):
+        return SHARED_TEACHER_KB_AGENT_ID
+    return agent_id
+
+
 def get_indexing_mode() -> str:
     """获取当前索引模式（供外部查询，如健康检查）
 
@@ -116,6 +132,8 @@ def _get_keyword_index_path(agent_id: str = None) -> str:
     Returns:
         str: JSON文件路径
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     os.makedirs(KEYWORD_INDEX_DIR, exist_ok=True)
     cache_key = agent_id or "__global__"
     safe_key = cache_key.replace('-', '_').replace(' ', '_')
@@ -163,6 +181,8 @@ def _add_chunks_to_keyword_index(chunks: list, filename: str, agent_id: str = No
         filename: 文档文件名
         agent_id: 智能体ID
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     index_data = _load_keyword_index(agent_id)
 
     # 先删除该文档的旧条目（避免重复）
@@ -195,6 +215,8 @@ def _delete_from_keyword_index(filename: str, agent_id: str = None) -> int:
     Returns:
         int: 被删除的条目数
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     index_data = _load_keyword_index(agent_id)
     original_count = len(index_data)
     index_data = [entry for entry in index_data if entry.get("source_file") != filename]
@@ -228,6 +250,8 @@ def _search_keyword_index(query: str, top_k: int = 3, agent_id: str = None) -> l
     Returns:
         list[dict]: 检索结果列表
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     index_data = _load_keyword_index(agent_id)
     if not index_data:
         return []
@@ -465,6 +489,8 @@ def _get_collection_name(agent_id: str = None) -> str:
     - agent_id 为 None 或空 → 全局知识库（普通Agent模式）
     - agent_id 有值 → 智能体专属知识库
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     if agent_id:
         # 用 agent_id 做 collection 名，确保合法
         safe_id = agent_id.replace('-', '_').replace(' ', '_')
@@ -485,6 +511,8 @@ def get_vector_store(agent_id: str = None):
     
     [优化3] 使用全局 PersistentClient 单例，避免重复初始化和 SQLite 锁冲突
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     global _embedding_available, _embedding_degraded_at, _chroma_client
 
     # 如果已知 Embedding 不可用，检查自动恢复
@@ -591,6 +619,8 @@ def reindex_all_documents(agent_id: str = None):
     Returns:
         dict: 包含重建结果
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     import chromadb
     collection_name = _get_collection_name(agent_id)
 
@@ -1477,6 +1507,8 @@ def index_document(file_path: str, filename: str = None, agent_id: str = None) -
     Returns:
         dict: 包含分块数量和状态信息
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     global _embedding_available
 
     if filename is None:
@@ -1709,6 +1741,8 @@ def _build_bm25_index(agent_id: str = None) -> dict:
         dict: {"bm25": BM25Okapi, "corpus": [...], "metadatas": [...], "ids": [...]}
               如果构建失败返回 None
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     cache_key = agent_id or "__global__"
     now = time.time()
 
@@ -1783,6 +1817,8 @@ def _get_all_docs_cached(agent_id: str = None) -> dict:
 
     [#12] 此函数仅作为 rank_bm25 不可用时的降级方案，主流程已改用 _build_bm25_index()
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     cache_key = agent_id or "__global__"
     now = time.time()
 
@@ -1814,6 +1850,8 @@ def _bm25_cache_invalidation(agent_id: str = None):
 
     [#12] 同时清除 rank_bm25 索引缓存和旧版全量文档缓存
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     global _bm25_index_cache, _bm25_doc_cache
     cache_key = agent_id or "__global__"
     cleared = []
@@ -1889,6 +1927,8 @@ def _bm25_keyword_search(query: str, top_k: int = 10, agent_id: str = None) -> l
     当 rank_bm25 未安装时自动降级为旧版全量遍历模式
     当 ChromaDB 不可用时返回空列表（由 _search_keyword_index 替代）
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     # ===== [#12] 优先使用 rank_bm25 索引 =====
     if _RANK_BM25_AVAILABLE:
         try:
@@ -2104,6 +2144,8 @@ def search_documents(query: str, top_k: int = 3, agent_id: str = None) -> list[d
     Returns:
         list[dict]: 检索结果列表
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     global _embedding_available
 
     # ===== 普通聊天模式（无 agent_id）：无知识库，返回空结果 =====
@@ -2238,6 +2280,8 @@ async def search_documents_async(query: str, top_k: int = 3, agent_id: str = Non
     Returns:
         list[dict]: 检索结果列表
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     global _embedding_available
 
     # ===== 普通聊天模式（无 agent_id）：无知识库，返回空结果 =====
@@ -2394,6 +2438,8 @@ def _expand_context_window(results: list[dict], agent_id: str = None, window_siz
     Returns:
         list[dict]: 增强后的检索结果
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     if not results:
         return results
 
@@ -2510,6 +2556,8 @@ def _search_disk_files(query: str, top_k: int = 3, agent_id: str = None) -> list
     Returns:
         list[dict]: 搜索结果
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     if agent_id:
         scan_dir = os.path.join(settings.DOCUMENTS_DIR, f"agent_{agent_id}")
     else:
@@ -2569,6 +2617,8 @@ def get_document_content(filename: str, agent_id: str = None) -> dict:
     Returns:
         dict: 包含文档完整内容、状态信息
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     # 查找文件路径（可能在agent子目录中）
     if agent_id:
         file_path = os.path.join(settings.DOCUMENTS_DIR, f"agent_{agent_id}", filename)
@@ -2627,6 +2677,8 @@ def list_indexed_documents(agent_id: str = None) -> list[str]:
     
     注意：普通聊天模式（agent_id=None）没有知识库，返回空列表
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     # 普通聊天模式：无知识库
     if not agent_id:
         return []
@@ -2683,6 +2735,8 @@ def update_document(filename: str, new_content: str, agent_id: str = None, async
     Returns:
         dict: 包含修改状态和详细信息
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     # 1. 检查文件是否存在（可能在agent子目录中）
     if agent_id:
         file_path = os.path.join(settings.DOCUMENTS_DIR, f"agent_{agent_id}", filename)
@@ -2817,6 +2871,8 @@ def delete_document(filename: str, agent_id: str = None) -> dict:
     Returns:
         dict: 包含删除状态和详细信息
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     chunks_deleted = 0
     found_in_any = False
 
@@ -2905,6 +2961,8 @@ def delete_agent_collection(agent_id: str) -> dict:
     Returns:
         dict: 包含删除状态和详细信息
     """
+    agent_id = normalize_knowledge_agent_id(agent_id)
+
     if not agent_id:
         return {"status": "error", "message": "agent_id 不能为空"}
 
