@@ -1,0 +1,175 @@
+"""
+应用配置管理
+支持动态切换 LLM 模型
+
+优化:
+- [#22] 配置中心：支持运行时热更新，无需重启
+"""
+import os
+import logging
+from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
+
+AUTO_MODEL_ID = "auto"
+AUTO_MODEL_TARGET = "glm-5.2"
+
+# 显式指定 .env 路径（项目根目录），避免 uvicorn 启动目录不是项目根时找不到 .env
+_env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+if not load_dotenv(_env_path):
+    load_dotenv()  # 回退：尝试从 cwd 加载
+
+# 可用的 LLM 模型列表
+AVAILABLE_MODELS = [
+    # 自动模式（默认）：当前固定指向 GLM-5.2，后续可扩展为按任务路由
+    {"id": AUTO_MODEL_ID, "name": "Auto", "desc": "自动选择模型，当前默认使用 GLM-5.2"},
+    # DeepSeek 系列（火山引擎）
+    {"id": "DeepSeek-V4-Flash", "name": "DeepSeek-V4-Flash", "desc": "DeepSeek快速版，性价比高"},
+    # GLM 系列（火山引擎Ark，与豆包/DeepSeek共用套餐）
+    {"id": "glm-5.2", "name": "GLM-5.2", "desc": "GLM旗舰，火山引擎Ark"},
+    # 豆包系列（火山引擎）
+    {"id": "Doubao-Seed-2.0-pro", "name": "Doubao-Seed-2.0-Pro", "desc": "豆包旗舰，火山引擎"},
+    # 千问系列（阿里云）
+    {"id": "qwen3.7-plus", "name": "Qwen3.7-Plus", "desc": "千问旗舰，阿里云DashScope"},
+    # MiMo系列（小米）
+    {"id": "mimo-v2.5-pro", "name": "MiMo-V2.5-Pro", "desc": "小米旗舰，MiMo推理模型"},
+    # Kimi 系列（Moonshot AI）
+    {"id": "kimi-k3", "name": "Kimi K3", "desc": "Kimi旗舰推理模型，Moonshot API"},
+]
+
+# 支持图片分析的视觉模型列表
+VISION_MODELS = {"glm-4v-plus", "glm-4v", "glm-4v-flash"}
+# 默认视觉模型（当用户上传图片时自动切换）
+DEFAULT_VISION_MODEL = "glm-4v-flash"
+# 视觉模型专用 API 配置（智谱AI，无论当前选用什么模型，视觉理解始终走智谱）
+# 如未设置则回退到 LLM_API_KEY / LLM_BASE_URL
+VISION_API_KEY: str = os.getenv("VISION_API_KEY", os.getenv("LLM_API_KEY", ""))
+VISION_BASE_URL: str = os.getenv("VISION_BASE_URL", "https://open.bigmodel.cn/api/paas/v4")
+
+# 快速模型列表（用于意图路由，加速简单问题的响应）
+FAST_MODELS = {"DeepSeek-V4-Flash"}
+
+# 火山引擎模型列表（走火山引擎Ark Coding API，包括豆包/DeepSeek/GLM）
+VOLCENGINE_MODELS = {"DeepSeek-V4-Flash", "Doubao-Seed-2.0-pro", "glm-5.2"}
+
+# DeepSeek 模型列表（兼容旧代码引用，走火山引擎Coding API）
+DEEPSEEK_MODELS = {"DeepSeek-V4-Flash"}
+
+# 千问模型列表（走阿里云DashScope API）
+QWEN_MODELS = {"qwen3.7-plus"}
+
+# MiMo模型列表（走小米MiMo API）
+MIMO_MODELS = {"mimo-v2.5-pro"}
+
+# Kimi模型列表（走 Moonshot API）
+KIMI_MODELS = {"kimi-k3"}
+
+# GLM模型列表（GLM-5.2 已加入 VOLCENGINE_MODELS，走火山引擎Ark；此处仅保留旧版兼容）
+GLM_MODELS = set()
+
+
+class Settings:
+    """应用配置（[#22] 支持运行时热更新）"""
+
+    # LLM 默认配置（阿里云百炼平台，兼容模式代理多家模型）
+    LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
+    LLM_BASE_URL: str = os.getenv("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+    # 新默认值为 Auto。兼容旧部署：若 .env 仍保留旧默认 DeepSeek，则自动迁移到 Auto；
+    # 用户仍可在前端显式选择 DeepSeek。
+    _configured_model = os.getenv("LLM_MODEL", AUTO_MODEL_ID).strip()
+    if _configured_model in ("", "DeepSeek-V4-Flash"):
+        _configured_model = AUTO_MODEL_ID
+    _valid_model_ids = {model["id"] for model in AVAILABLE_MODELS}
+    LLM_MODEL: str = _configured_model if _configured_model in _valid_model_ids else AUTO_MODEL_ID
+
+    # LLM 备用配置（主Key失效时自动切换）
+    LLM_API_KEY_BACKUP: str = os.getenv("LLM_API_KEY_BACKUP", "")
+    LLM_BASE_URL_BACKUP: str = os.getenv("LLM_BASE_URL_BACKUP", "")
+
+    # DeepSeek / 豆包 独立配置（火山引擎Ark）
+    DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", os.getenv("LLM_API_KEY", ""))
+    DEEPSEEK_BASE_URL: str = os.getenv("DEEPSEEK_BASE_URL", "https://ark.cn-beijing.volces.com/api/coding/v3")
+
+    # 千问独立配置（阿里云DashScope）
+    QWEN_API_KEY: str = os.getenv("QWEN_API_KEY", "")
+    QWEN_BASE_URL: str = os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+
+    # MiMo独立配置（小米）
+    MIMO_API_KEY: str = os.getenv("MIMO_API_KEY", "")
+    MIMO_BASE_URL: str = os.getenv("MIMO_BASE_URL", "https://api.xiaomimimo.com/v1")
+
+    # Kimi独立配置（Moonshot AI）
+    MOONSHOT_API_KEY: str = os.getenv("MOONSHOT_API_KEY", "")
+    MOONSHOT_BASE_URL: str = os.getenv("MOONSHOT_BASE_URL", "https://api.moonshot.cn/v1")
+
+    # GLM独立配置（阿里云百炼平台，走 LLM_API_KEY/LLM_BASE_URL）
+    GLM_API_KEY: str = os.getenv("GLM_API_KEY", os.getenv("LLM_API_KEY", ""))
+    GLM_BASE_URL: str = os.getenv("GLM_BASE_URL", os.getenv("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"))
+
+    # Embedding 模型
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "embedding-3")
+    # [#12] Embedding 独立 API Key（如未设置则复用 LLM_API_KEY）
+    EMBEDDING_API_KEY: str = os.getenv("EMBEDDING_API_KEY", os.getenv("LLM_API_KEY", ""))
+    # Embedding API Base URL（如未设置则复用 LLM_BASE_URL）
+    EMBEDDING_BASE_URL: str = os.getenv("EMBEDDING_BASE_URL", os.getenv("LLM_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"))
+
+    # 应用配置
+    APP_HOST: str = os.getenv("APP_HOST", "0.0.0.0")
+    APP_PORT: int = int(os.getenv("APP_PORT", "8000"))
+
+    # 数据目录
+    DATA_DIR: str = os.getenv("DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"))
+    DOCUMENTS_DIR: str = os.getenv("DOCUMENTS_DIR", os.path.join(DATA_DIR, "documents"))
+    CHROMA_DIR: str = os.getenv("CHROMA_DIR", os.path.join(DATA_DIR, "chroma_db"))
+    EMPLOYEES_FILE: str = os.getenv("EMPLOYEES_FILE", os.path.join(DATA_DIR, "employees.json"))
+
+    # [#22] 配置变更回调列表
+    _change_callbacks = []
+
+    @classmethod
+    def on_change(cls, callback):
+        """注册配置变更回调"""
+        cls._change_callbacks.append(callback)
+
+    @classmethod
+    def notify_change(cls, key: str, old_value, new_value):
+        """通知配置变更"""
+        for cb in cls._change_callbacks:
+            try:
+                cb(key, old_value, new_value)
+            except Exception as e:
+                logger.warning(f"配置变更回调异常: {e}")
+
+
+settings = Settings()
+
+
+def resolve_model_id(model_id: str) -> str:
+    """将前端选择值解析为实际调用的模型ID。"""
+    return AUTO_MODEL_TARGET if model_id == AUTO_MODEL_ID else model_id
+
+
+def get_effective_model() -> str:
+    """获取当前实际调用的模型ID（Auto 当前解析为 GLM-5.2）。"""
+    return resolve_model_id(settings.LLM_MODEL)
+
+
+def set_current_model(model_id: str) -> bool:
+    """动态切换当前使用的模型"""
+    valid_ids = [m["id"] for m in AVAILABLE_MODELS]
+    if model_id in valid_ids:
+        old = settings.LLM_MODEL
+        settings.LLM_MODEL = model_id
+        # 重置 Agent 单例，让下次对话使用新模型
+        from app.agent.core import reset_agent
+        reset_agent()
+        # [#22] 通知配置变更
+        Settings.notify_change("LLM_MODEL", old, model_id)
+        logger.info(f"模型切换: {old} → {model_id}")
+        return True
+    return False
+
+
+def get_current_model() -> str:
+    """获取当前使用的模型ID"""
+    return settings.LLM_MODEL
