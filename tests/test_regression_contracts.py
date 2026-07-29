@@ -60,6 +60,23 @@ class RegressionContracts(unittest.TestCase):
         self.assertIn("return CHEN_TEACHER_AGENT_ID", rag)
         self.assertIn("agent_id.endswith(DIGITAL_CHEN_AGENT_SUFFIX)", core)
 
+    def test_auto_model_quota_failover_is_ordered_and_silent(self):
+        config = read("app/config.py")
+        routes = read("app/api/routes.py")
+        core = read("app/agent/core.py")
+
+        glm_pos = config.index('"glm-5.2"', config.index("AUTO_MODEL_FALLBACK_CHAIN"))
+        mimo_pos = config.index('"mimo-v2.5-pro"', glm_pos)
+        kimi_pos = config.index('"kimi-k3"', mimo_pos)
+        self.assertLess(glm_pos, mimo_pos)
+        self.assertLess(mimo_pos, kimi_pos)
+        self.assertIn("is_model_quota_error", routes)
+        self.assertIn("selected_model == AUTO_MODEL_ID", routes)
+        self.assertIn("has_next and not emitted_token and is_quota_event", routes)
+        self.assertIn("if has_next and not emitted_token and is_model_quota_error(exc)", routes)
+        self.assertNotIn("yield {\"type\": \"model_switch\"", routes)
+        self.assertIn("MiMo 未配置 MIMO_API_KEY", core)
+
 
 if __name__ == "__main__":
     unittest.main()

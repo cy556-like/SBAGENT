@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 AUTO_MODEL_ID = "auto"
 AUTO_MODEL_TARGET = "glm-5.2"
+AUTO_MODEL_FALLBACK_CHAIN = (
+    "glm-5.2",
+    "mimo-v2.5-pro",
+    "kimi-k3",
+)
 
 # 显式指定 .env 路径（项目根目录），避免 uvicorn 启动目录不是项目根时找不到 .env
 _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
@@ -26,8 +31,8 @@ if not load_dotenv(_env_path):
 
 # 可用的 LLM 模型列表
 AVAILABLE_MODELS = [
-    # 自动模式（默认）：当前固定指向 GLM-5.2，后续可扩展为按任务路由
-    {"id": AUTO_MODEL_ID, "name": "Auto", "desc": "自动选择模型，当前默认使用 GLM-5.2"},
+    # 自动模式（默认）：优先 GLM-5.2，额度/限流异常时静默切换 MiMo、Kimi。
+    {"id": AUTO_MODEL_ID, "name": "Auto", "desc": "自动选择最合适的大模型"},
     # DeepSeek 系列（火山引擎）
     {"id": "DeepSeek-V4-Flash", "name": "DeepSeek-V4-Flash", "desc": "DeepSeek快速版，性价比高"},
     # GLM 系列（火山引擎Ark，与豆包/DeepSeek共用套餐）
@@ -231,6 +236,57 @@ def get_active_model() -> str:
 def resolve_model_id(model_id: str) -> str:
     """将前端选择值解析为实际调用的模型ID。"""
     return AUTO_MODEL_TARGET if model_id == AUTO_MODEL_ID else model_id
+
+
+def is_model_quota_error(error) -> bool:
+    """识别上游模型的额度、余额和限流错误，供 Auto 模式静默容灾。"""
+    parts = [str(error), repr(error)]
+    response = getattr(error, "response", None)
+    if response is not None:
+        status_code = getattr(response, "status_code", None)
+        if status_code is not None:
+            parts.append(f"http status {status_code}")
+        try:
+            parts.append(str(response.text))
+        except Exception:
+            pass
+        try:
+            parts.append(str(response.json()))
+        except Exception:
+            pass
+
+    error_text = " ".join(parts).lower()
+    markers = (
+        "insufficient_quota",
+        "insufficient quota",
+        "quota exceeded",
+        "quota_exceeded",
+        "quota exhausted",
+        "quota_exhausted",
+        "quota not enough",
+        "exceeded your current quota",
+        "balance is insufficient",
+        "insufficient balance",
+        "insufficient funds",
+        "credit balance",
+        "billing hard limit",
+        "resource exhausted",
+        "resource_exhausted",
+        "rate limit exceeded",
+        "rate_limit_exceeded",
+        "too many requests",
+        "http status 429",
+        "http 429",
+        "status code 429",
+        "status_code=429",
+        "余额不足",
+        "额度不足",
+        "配额不足",
+        "账户余额不足",
+        "账号欠费",
+        "账户欠费",
+    )
+    return any(marker in error_text for marker in markers)
 
 
 def get_effective_model(username: str = None) -> str:

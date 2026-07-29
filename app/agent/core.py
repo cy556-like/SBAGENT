@@ -29,7 +29,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from app.config import settings, VISION_MODELS, DEFAULT_VISION_MODEL, VISION_API_KEY, VISION_BASE_URL, FAST_MODELS, DEEPSEEK_MODELS, VOLCENGINE_MODELS, QWEN_MODELS, MIMO_MODELS, KIMI_MODELS, GLM_MODELS, AUTO_MODEL_ID, resolve_model_id, get_active_model
+from app.config import settings, VISION_MODELS, DEFAULT_VISION_MODEL, VISION_API_KEY, VISION_BASE_URL, FAST_MODELS, DEEPSEEK_MODELS, VOLCENGINE_MODELS, QWEN_MODELS, MIMO_MODELS, KIMI_MODELS, GLM_MODELS, AUTO_MODEL_ID, resolve_model_id, get_active_model, is_model_quota_error
 from app.agent.tools import ALL_TOOLS, get_tools, set_current_agent_id, set_current_session_id, get_current_session_id, reset_search_count
 from app.agent.prompts import SYSTEM_PROMPT, SYSTEM_PROMPT_WITH_WEB_SEARCH, CHAT_SYSTEM_PROMPT, get_agent_keywords_section
 from app.agent.subagent_prompts import build_subagent_task
@@ -487,7 +487,9 @@ def create_llm(deep_think: bool = False, fast_mode: bool = False, model_override
         api_key = settings.QWEN_API_KEY
         base_url = settings.QWEN_BASE_URL
         logger.info(f"千问模型检测到（{model}），使用阿里云 DashScope API: {base_url}")
-    elif is_mimo and settings.MIMO_API_KEY:
+    elif is_mimo:
+        if not settings.MIMO_API_KEY:
+            raise RuntimeError("MiMo 未配置 MIMO_API_KEY，请在服务器 .env 中配置后重启服务")
         api_key = settings.MIMO_API_KEY
         base_url = settings.MIMO_BASE_URL
         logger.info(f"MiMo模型检测到（{model}），使用小米MiMo API: {base_url}")
@@ -1888,6 +1890,11 @@ async def chat_stream_generator(user_input: str, session_id: str = "default", we
         for tool_name, display_name in pending_tools.items():
             yield {"type": "tool_done", "name": tool_name, "display": display_name}
         pending_tools.clear()
+        # Auto 模式的额度/余额/限流异常交给 API 层按 GLM → MiMo → Kimi
+        # 静默容灾；这里不能先转换成前端 error 事件。
+        if is_model_quota_error(e):
+            _cleanup_session_cancel(session_id)
+            raise
         # 检测401认证错误，自动切换备用Key
         if _check_and_switch_to_backup(e):
             _set_session_cancelled(session_id)  # 401 才真正标记取消
@@ -1917,6 +1924,9 @@ async def chat_stream_generator(user_input: str, session_id: str = "default", we
             _cleanup_session_cancel(session_id)
             return
         except Exception as e2:
+            if is_model_quota_error(e2):
+                _cleanup_session_cancel(session_id)
+                raise
             _set_session_cancelled(session_id)
             yield {"type": "error", "content": f"处理失败: {str(e2)}"}
             yield {"type": "done"}
@@ -1948,6 +1958,9 @@ async def chat_stream_generator(user_input: str, session_id: str = "default", we
         except asyncio.TimeoutError:
             yield {"type": "error", "content": "获取回复超时，请稍后重试"}
         except Exception as e3:
+            if is_model_quota_error(e3):
+                _cleanup_session_cancel(session_id)
+                raise
             yield {"type": "error", "content": f"处理失败: {str(e3)}"}
 
     # 保存到会话历史
@@ -2045,6 +2058,8 @@ async def _chat_mode_stream(user_input: str, session_id: str = "default", deep_t
                 "remotedisconnected",
                 "chunked encoding",
             ])
+            if is_model_quota_error(e):
+                raise
             # 检测401认证错误，自动切换备用Key
             if _check_and_switch_to_backup(e):
                 yield {"type": "error", "content": "主API Key已失效，已自动切换到备用Key，请重新提问"}
