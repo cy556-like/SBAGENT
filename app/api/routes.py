@@ -184,9 +184,10 @@ logger = logging.getLogger(__name__)
 
 
 
-# 文件大小限制：50MB
+# 知识库与文件接口大小限制：200MB
 
-MAX_FILE_SIZE = 50 * 1024 * 1024
+MAX_FILE_SIZE_MB = 200
+MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
 
 
 
@@ -973,7 +974,7 @@ async def chat_with_file_stream(
 
     if len(file_content_raw) > MAX_FILE_SIZE:
 
-        raise HTTPException(status_code=413, detail=f"文件大小超过限制（最大 50MB），当前文件: {len(file_content_raw) // 1024 // 1024}MB")
+        raise HTTPException(status_code=413, detail=f"文件大小超过限制（最大 {MAX_FILE_SIZE_MB}MB），当前文件: {len(file_content_raw) // 1024 // 1024}MB")
 
     # 重置文件指针
 
@@ -1247,7 +1248,7 @@ async def upload_document(file: UploadFile = File(...), agent_id: str = Form(Non
 
     if len(file_content_raw) > MAX_FILE_SIZE:
 
-        raise HTTPException(status_code=413, detail=f"文件大小超过限制（最大 50MB）")
+        raise HTTPException(status_code=413, detail=f"文件大小超过限制（最大 {MAX_FILE_SIZE_MB}MB）")
 
     await file.seek(0)
 

@@ -26,6 +26,8 @@ let deepThinkEnabled = false;
 let currentMode = 'agent';
 let selectedSkill = null;  // 当前选中的技能（如 '8d-skill'）
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
+const MAX_KB_FILE_SIZE_MB = 200;
+const MAX_KB_FILE_SIZE = MAX_KB_FILE_SIZE_MB * 1024 * 1024;
 const DIGITAL_TEACHER_AGENT_ID = 'digital-zheng-teacher-agent';
 const DIGITAL_TEACHER_AGENT_SUFFIX = '-digital-zheng-teacher-agent';
 const FULL_KB_ADMIN_USERNAME = 'adminsubao';
@@ -3244,6 +3246,7 @@ async function deleteDocument(filename, btnEl) {
 
 async function uploadToKnowledgeBase(file) {
     if (!canUploadKnowledgeBase()) { showToast('当前账号无权向该知识库上传文档'); return; }
+    if (file.size > MAX_KB_FILE_SIZE) { showToast(`文件大小不能超过 ${MAX_KB_FILE_SIZE_MB}MB`); return; }
     const progressEl = document.getElementById('uploadProgress');
     const fileNameEl = document.getElementById('progressFileName');
     const barFill = document.getElementById('progressBarFill');
@@ -3503,6 +3506,7 @@ async function loadKbDocs() {
 async function uploadKbDoc(input) {
     if (!input.files || !input.files[0]) return;
     const file = input.files[0];
+    if (file.size > MAX_KB_FILE_SIZE) { showToast(`文件大小不能超过 ${MAX_KB_FILE_SIZE_MB}MB`); input.value = ''; return; }
     if (!currentAgentId) {
         showToast('请先选择一个智能体');
         input.value = '';
@@ -3847,6 +3851,11 @@ async function uploadKbPageFiles(fileList) {
 }
 
 async function uploadToKbPage(file, options = {}) {
+    if (file.size > MAX_KB_FILE_SIZE) {
+        const message = `文件大小不能超过 ${MAX_KB_FILE_SIZE_MB}MB`;
+        showToast(message);
+        return { ok: false, error: message };
+    }
     if (!canUploadKnowledgeBase()) {
         showToast('当前账号无权向该知识库上传文档');
         return { ok: false, error: '无上传权限' };

@@ -483,6 +483,16 @@ def get_embeddings():
     return _embeddings_instance
 
 
+def _create_chroma_client():
+    """创建关闭匿名遥测的 Chroma 客户端，避免 PostHog 版本不兼容产生噪声日志。"""
+    import chromadb
+    from chromadb.config import Settings as ChromaSettings
+    return chromadb.PersistentClient(
+        path=settings.CHROMA_DIR,
+        settings=ChromaSettings(anonymized_telemetry=False),
+    )
+
+
 def _get_collection_name(agent_id: str = None) -> str:
     """根据 agent_id 获取 ChromaDB collection 名称
 
@@ -542,7 +552,7 @@ def get_vector_store(agent_id: str = None):
             
             if _chroma_client is None:
                 import chromadb
-                _chroma_client = chromadb.PersistentClient(path=settings.CHROMA_DIR)
+                _chroma_client = _create_chroma_client()
                 _chroma_client._created_at = time.time()  # [v8] 记录创建时间
                 logger.info(f"[优化3] ChromaDB PersistentClient 已创建全局单例: {settings.CHROMA_DIR}")
 
@@ -569,7 +579,7 @@ def get_vector_store(agent_id: str = None):
             # 重试：重建 PersistentClient 单例
             try:
                 import chromadb
-                _chroma_client = chromadb.PersistentClient(path=settings.CHROMA_DIR)
+                _chroma_client = _create_chroma_client()
                 # [P0-1 修复] retry 路径同样指定 cosine
                 vs = Chroma(
                     collection_name=collection_name,
@@ -630,7 +640,7 @@ def reindex_all_documents(agent_id: str = None):
 
         # 从 ChromaDB 获取
         try:
-            client = chromadb.PersistentClient(path=settings.CHROMA_DIR)
+            client = _create_chroma_client()
             existing_collections = [c.name for c in client.list_collections()]
             if collection_name in existing_collections:
                 collection = client.get_collection(collection_name)
@@ -3144,7 +3154,7 @@ def delete_agent_collection(agent_id: str) -> dict:
 
     try:
         # 1. 删除 ChromaDB collection
-        client = chromadb.PersistentClient(path=settings.CHROMA_DIR)
+        client = _create_chroma_client()
         existing_collections = [c.name for c in client.list_collections()]
         if collection_name in existing_collections:
             client.delete_collection(collection_name)
@@ -4223,7 +4233,7 @@ def list_all_collections() -> list[dict]:
     """列出 ChromaDB 中所有的 collection 及其文档数（诊断用）"""
     import chromadb
     try:
-        client = chromadb.PersistentClient(path=settings.CHROMA_DIR)
+        client = _create_chroma_client()
         collections = client.list_collections()
         result = []
         for c in collections:

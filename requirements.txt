@@ -12,6 +12,8 @@ langgraph>=0.2.0
 
 # ===== RAG =====
 chromadb>=0.5.0,<0.6.0
+# Chroma 0.5 的遥测调用与 PostHog 6+ capture 签名不兼容
+posthog>=2.4.0,<6.0.0
 langchain-chroma>=0.2.0
 pypdf>=5.0.0
 docx2txt>=0.8
