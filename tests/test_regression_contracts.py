@@ -1,0 +1,47 @@
+"""Low-dependency regression contracts for critical SBAGENT isolation paths."""
+from pathlib import Path
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def read(relative: str) -> str:
+    return (ROOT / relative).read_text(encoding="utf-8")
+
+
+class RegressionContracts(unittest.TestCase):
+    def test_model_selection_is_user_scoped_and_authenticated(self):
+        config = read("app/config.py")
+        routes = read("app/api/routes.py")
+        self.assertIn("def get_user_model(username", config)
+        self.assertIn("def set_user_model(username", config)
+        self.assertIn("ContextVar", config)
+        self.assertIn("async def get_models(username: str = Depends(require_auth))", routes)
+        self.assertIn("async def set_model(req: ModelSetRequest, username: str = Depends(require_auth))", routes)
+
+    def test_knowledge_read_endpoints_require_authentication(self):
+        routes = read("app/api/routes.py")
+        self.assertIn("async def search_api(req: SearchRequest", routes)
+        self.assertIn("async def download_document(filename: str", routes)
+        self.assertGreaterEqual(routes.count("username: str = Depends(require_auth)"), 10)
+
+    def test_frontend_has_race_guards_and_safe_markdown(self):
+        app_js = read("app/static/js/app.js")
+        self.assertIn("renderSafeMarkdown", app_js)
+        self.assertIn("DOMPurify.sanitize", app_js)
+        self.assertIn("const targetAgentId = currentAgentId", app_js)
+        self.assertIn("requestedAgentId !== currentAgentId", app_js)
+        self.assertIn("fetchAllChatsForUser", app_js)
+        self.assertIn("agentActiveChatIds:${currentUser}", app_js)
+
+    def test_pwa_brand_and_cache_are_sbagent(self):
+        manifest = read("app/static/manifest.json")
+        service_worker = read("app/static/sw.js")
+        self.assertIn("速豹 AI智能体平台", manifest)
+        self.assertIn("sbagent-static-v1.2.0", service_worker)
+        self.assertNotIn("jlagent-static", service_worker)
+
+
+if __name__ == "__main__":
+    unittest.main()

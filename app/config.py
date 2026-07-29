@@ -6,6 +6,11 @@
 - [#22] 配置中心：支持运行时热更新，无需重启
 """
 import os
+import sqlite3
+import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
+from pathlib import Path
 import logging
 from dotenv import load_dotenv
 
@@ -144,14 +149,94 @@ class Settings:
 settings = Settings()
 
 
+# 模型选择按账号持久化。不能直接修改 settings.LLM_MODEL：Uvicorn 多 worker
+# 环境下每个进程都有自己的内存副本，而且不同账号会互相覆盖。
+_user_model_lock = threading.RLock()
+_active_model: ContextVar[str | None] = ContextVar("active_model", default=None)
+_USER_MODEL_DB = Path(settings.DATA_DIR) / "user_models.sqlite3"
+
+
+def _open_user_model_db():
+    _USER_MODEL_DB.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(_USER_MODEL_DB), timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS user_models "
+        "(username TEXT PRIMARY KEY, model_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    )
+    return conn
+
+
+def get_user_model(username: str) -> str:
+    """获取账号独立的模型选择；未设置时使用 Auto。"""
+    if not username:
+        return AUTO_MODEL_ID
+    with _user_model_lock:
+        conn = None
+        try:
+            conn = _open_user_model_db()
+            row = conn.execute(
+                "SELECT model_id FROM user_models WHERE username = ?", (username,)
+            ).fetchone()
+            model_id = row[0] if row else AUTO_MODEL_ID
+        except Exception as exc:
+            logger.warning(f"读取用户模型配置失败: {exc}")
+            model_id = AUTO_MODEL_ID
+        finally:
+            if conn is not None:
+                conn.close()
+    valid_ids = {m["id"] for m in AVAILABLE_MODELS}
+    return model_id if model_id in valid_ids else AUTO_MODEL_ID
+
+
+def set_user_model(username: str, model_id: str) -> bool:
+    """持久化账号独立模型选择，供所有 worker 在每次请求时读取。"""
+    if not username or model_id not in {m["id"] for m in AVAILABLE_MODELS}:
+        return False
+    with _user_model_lock:
+        conn = None
+        try:
+            conn = _open_user_model_db()
+            conn.execute(
+                "INSERT INTO user_models(username, model_id, updated_at) VALUES(?, ?, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(username) DO UPDATE SET model_id=excluded.model_id, updated_at=CURRENT_TIMESTAMP",
+                (username, model_id),
+            )
+            conn.commit()
+        except Exception as exc:
+            logger.error(f"保存用户模型配置失败: {exc}")
+            return False
+        finally:
+            if conn is not None:
+                conn.close()
+    logger.info(f"用户模型切换: {username} -> {model_id}")
+    return True
+
+
+@contextmanager
+def use_model(model_id: str):
+    """为当前请求绑定模型，ContextVar 可隔离同一 worker 内的并发账号。"""
+    token = _active_model.set(model_id)
+    try:
+        yield
+    finally:
+        _active_model.reset(token)
+
+
+def get_active_model() -> str:
+    """Agent 内部使用的当前请求模型。"""
+    return _active_model.get() or settings.LLM_MODEL
+
+
 def resolve_model_id(model_id: str) -> str:
     """将前端选择值解析为实际调用的模型ID。"""
     return AUTO_MODEL_TARGET if model_id == AUTO_MODEL_ID else model_id
 
 
-def get_effective_model() -> str:
+def get_effective_model(username: str = None) -> str:
     """获取当前实际调用的模型ID（Auto 当前解析为 GLM-5.2）。"""
-    return resolve_model_id(settings.LLM_MODEL)
+    selected = get_user_model(username) if username else get_active_model()
+    return resolve_model_id(selected)
 
 
 def set_current_model(model_id: str) -> bool:

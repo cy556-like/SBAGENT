@@ -25,6 +25,10 @@ let webSearchEnabled = false;
 let deepThinkEnabled = false;
 let currentMode = 'agent';
 let selectedSkill = null;  // 当前选中的技能（如 '8d-skill'）
+let _chatListLoadSeq = 0;
+let _chatHistoryLoadSeq = 0;
+let _kbDocsLoadSeq = 0;
+let _chatCreateSeq = 0;
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const MAX_KB_FILE_SIZE_MB = 200;
 const MAX_KB_FILE_SIZE = MAX_KB_FILE_SIZE_MB * 1024 * 1024;
@@ -450,7 +454,7 @@ function buildBuiltinAgentDefaults() {
         const workspaceName = WORKSPACE_CONFIG[workspaceId]?.name || '质量管理智能体';
         defaults[agentId] = {
             name: '数字郑老师',
-            task: `你是“${workspaceName}”工作区内的郑伟老师AI分身，面向质量改进与精益工作，负责专业答疑、方法辅导、案例复盘和知识传承。你必须始终自称“郑伟老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持郑伟老师AI分身的身份。请始终优先检索本工作区内数字郑老师的独立知识库后回答专业问题，不得读取其他工作区数字郑老师或其他智能体的知识库，并明确区分知识库事实与通用建议。`,
+            task: `你是“${workspaceName}”工作区内的郑伟老师AI分身，面向质量改进与精益工作，负责专业答疑、方法辅导、案例复盘和知识传承。你必须始终自称“郑伟老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持郑伟老师AI分身的身份。请始终优先检索数字郑老师在七个工作区共享的统一知识库后回答专业问题，不得读取其他子智能体的独立知识库，并明确区分知识库事实与通用建议。`,
             summary: '质量改进与精益专业辅导'
         };
     });
@@ -541,6 +545,7 @@ function showAgentPortal(pushHistory = true) {
     if (!currentUser || !authToken) return;
 
     stopGeneration();
+    _chatHistoryLoadSeq++;
     currentWorkspaceId = null;
     currentAgentId = null;
     const portal = document.getElementById('agentPortalPage');
@@ -730,21 +735,17 @@ async function syncAgentsFromServer(force = false) {
 async function rebuildChatIdsFromServer() {
     if (!currentUser || !authToken) return;
     try {
-        const resp = await fetch(`/api/v1/chats?username=${encodeURIComponent(currentUser)}`, { headers: apiHeaders() });
-        const data = await resp.json();
-        console.log('[rebuildChatIds] server chats:', data);
-        if (data.success && data.chats) {
-            const serverChats = data.chats;
+        const serverChats = await fetchAllChatsForUser(currentUser);
+        console.log('[rebuildChatIds] server chats:', serverChats.length);
+        if (Array.isArray(serverChats)) {
             myAgents.forEach(agent => {
                 // Find all chats where chat.agent_id matches this agent's id
                 const matchingChatIds = serverChats
                     .filter(chat => chat.agent_id === agent.id)
                     .map(chat => chat.chat_id);
                 console.log(`[rebuildChatIds] Agent ${agent.name} (${agent.id}): found ${matchingChatIds.length} chats`);
-                // Merge: add any new server chat_ids
-                const existingIds = new Set(agent.chat_ids || []);
-                matchingChatIds.forEach(id => existingIds.add(id));
-                agent.chat_ids = Array.from(existingIds);
+                // 以当前登录账号的服务端结果为准，避免另一账号的本地ID残留。
+                agent.chat_ids = matchingChatIds;
             });
             localStorage.setItem('forgeAgents', JSON.stringify(myAgents));
             console.log('[rebuildChatIds] Rebuilt chat_ids from server');
@@ -842,6 +843,9 @@ async function switchToAgent(agentId) {
     // [BUG FIX #2] 切换智能体时中断正在进行的流式响应
     // 防止旧SSE流在后台继续运行导致 isLoading 锁死、新聊天无法发送消息
     stopGeneration();
+    _chatHistoryLoadSeq++;
+    _chatCreateSeq++;
+    _kbDocsLoadSeq++;
 
     currentAgentId = agentId;
 
@@ -962,8 +966,15 @@ async function createNewChatForAgent(agentId) {
 
     // 切换到该智能体
     currentAgentId = agentId;
+    // Skills 模式属于当前子智能体的一次工作状态，切换后必须退出，避免串到下一智能体。
+    selectedSkill = null;
+    const skillModeBar = document.getElementById('skillModeBar');
+    if (skillModeBar) skillModeBar.style.display = 'none';
     currentMode = 'agent';
     localStorage.setItem('chatMode', 'agent');
+    const requestedUser = currentUser;
+    const requestedAgentId = agentId;
+    const createSeq = ++_chatCreateSeq;
 
     // 更新模式切换按钮样式
     const modeChatBtn = document.getElementById('modeChat');
@@ -976,7 +987,7 @@ async function createNewChatForAgent(agentId) {
         const chatTitle = agent ? agent.name : '新对话';
         console.log('[新建对话] 发送POST请求, title=', chatTitle, 'agent_id=', agentId);
 
-        const resp = await fetch(`/api/v1/chats?username=${encodeURIComponent(currentUser)}&title=${encodeURIComponent(chatTitle)}&mode=agent&agent_id=${encodeURIComponent(agentId)}`, {
+        const resp = await fetch(`/api/v1/chats?username=${encodeURIComponent(requestedUser)}&title=${encodeURIComponent(chatTitle)}&mode=agent&agent_id=${encodeURIComponent(requestedAgentId)}`, {
             method: 'POST',
             headers: apiHeaders()
         });
@@ -984,6 +995,10 @@ async function createNewChatForAgent(agentId) {
         console.log('[新建对话] API返回:', JSON.stringify(data));
 
         if (data.success && data.chat) {
+            if (createSeq !== _chatCreateSeq || requestedUser !== currentUser || requestedAgentId !== currentAgentId) {
+                await loadChatList({ autoCreate: false });
+                return;
+            }
             currentChatId = data.chat.chat_id;
             modeChatId['agent'] = currentChatId;
 
@@ -1131,12 +1146,16 @@ let agentActiveChatId = {};
 ALLOWED_AGENT_IDS.forEach(id => { agentActiveChatId[id] = null; });
 
 function saveAgentActiveChatIds() {
-    localStorage.setItem('agentActiveChatIds', JSON.stringify(agentActiveChatId));
+    if (!currentUser) return;
+    localStorage.setItem(`agentActiveChatIds:${currentUser}`, JSON.stringify(agentActiveChatId));
 }
 
 function loadAgentActiveChatIds() {
+    agentActiveChatId = {};
+    ALLOWED_AGENT_IDS.forEach(id => { agentActiveChatId[id] = null; });
+    if (!currentUser) return;
     try {
-        const saved = localStorage.getItem('agentActiveChatIds');
+        const saved = localStorage.getItem(`agentActiveChatIds:${currentUser}`);
         if (saved) agentActiveChatId = JSON.parse(saved);
     } catch(e) {}
 }
@@ -1316,10 +1335,17 @@ function getModeChats() {
 (function initMode() {
     const saved = localStorage.getItem('chatMode');
     if (saved === 'chat') {
-        currentMode = 'chat';
-        localStorage.setItem('chatMode', 'chat');
-        document.getElementById('modeChat').classList.add('active');
-        document.getElementById('modeAgent').classList.remove('active');
+        // 旧版本曾有 Chat/Agent 模式按钮；新界面已移除，清理遗留状态避免空节点异常。
+        const modeChat = document.getElementById('modeChat');
+        const modeAgent = document.getElementById('modeAgent');
+        if (modeChat && modeAgent) {
+            currentMode = 'chat';
+            modeChat.classList.add('active');
+            modeAgent.classList.remove('active');
+        } else {
+            currentMode = 'agent';
+            localStorage.setItem('chatMode', 'agent');
+        }
     }
     // 初始化时根据状态决定知识库按钮可见性
     updateKbUploadVisibility();
@@ -1343,6 +1369,34 @@ function toggleDeepThink() {
 })();
 
 // ===== Marked Config =====
+function renderSafeMarkdown(text) {
+    const source = String(text || '');
+    if (typeof marked === 'undefined') return escapeHtml(source).replace(/\n/g, '<br>');
+    const rendered = marked.parse(source);
+    if (typeof DOMPurify !== 'undefined') {
+        return DOMPurify.sanitize(rendered, {
+            USE_PROFILES: { html: true },
+            FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form'],
+            FORBID_ATTR: ['style']
+        });
+    }
+    // 安全组件加载失败时宁可降级为纯文本，不能把模型原始 HTML 注入页面。
+    return escapeHtml(source).replace(/\n/g, '<br>');
+}
+
+async function readApiResponse(resp) {
+    const text = await resp.text();
+    if (!text) return {};
+    try {
+        return JSON.parse(text);
+    } catch (_) {
+        if (resp.status === 413) return { detail: `文件超过服务器允许的大小（最大 ${MAX_KB_FILE_SIZE_MB}MB）` };
+        if (resp.status === 401) return { detail: '登录已过期，请重新登录' };
+        if (resp.status === 403) return { detail: '当前账号没有此操作权限' };
+        return { detail: `服务器返回异常 (${resp.status})` };
+    }
+}
+
 if (typeof marked !== 'undefined') {
     marked.setOptions({
         highlight: function(code, lang) {
@@ -1453,7 +1507,7 @@ async function loadModels() {
         select.disabled = true;
         const resp = await fetch('/api/v1/models', { headers: apiHeaders() });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
+        const data = await readApiResponse(resp);
         if (!Array.isArray(data.models) || data.models.length === 0) throw new Error('模型列表为空');
         select.innerHTML = '';
         data.models.forEach(m => {
@@ -1489,7 +1543,7 @@ async function switchModel() {
     select.disabled = true;
     try {
         const resp = await fetch('/api/v1/models/set', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ model_id: modelId }) });
-        const data = await resp.json();
+        const data = await readApiResponse(resp);
         if (!resp.ok || !data.success) throw new Error(data.message || `HTTP ${resp.status}`);
 
         currentModelId = data.current || modelId;
@@ -1577,6 +1631,7 @@ async function doLogin() {
         const data = await resp.json();
         if (data.success) {
             currentUser = username;
+            loadAgentActiveChatIds();
             userRole = data.role || 'user';
             if (data.token) { authToken = data.token; localStorage.setItem('authToken', data.token); }
             localStorage.setItem('userRole', userRole);
@@ -1591,7 +1646,7 @@ async function doLogin() {
                 if (userRole === 'admin') {
                     document.getElementById('headerUserName').textContent = username + ' (管理员)';
                 }
-                loadChatList();
+                await loadChatList({ autoCreate: false });
                 const modelLoadPromise = loadModels();
                 await syncAgentsFromServer(true);  // [#12] 登录时强制同步一次，内部已调用 rebuildChatIdsFromServer（会GET /chats）
                 await saveAgents();  // 将数字郑老师和71个固定子智能体写回服务端
@@ -1617,6 +1672,16 @@ async function doRegister() {
 }
 
 function doLogout() {
+    // 必须先终止旧账号的流式请求，防止回复继续写入下一账号的页面。
+    stopGeneration();
+    _chatListLoadSeq++;
+    _chatHistoryLoadSeq++;
+    _kbDocsLoadSeq++;
+    _chatCreateSeq++;
+    selectedSkill = null;
+    const skillBar = document.getElementById('skillModeBar');
+    if (skillBar) skillBar.style.display = 'none';
+    modeChatId = { agent: null, chat: null };
     currentUser = null; userRole = null; authToken = null; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; currentWorkspaceId = null; agentKbUploadMode = false;
     localStorage.removeItem('authToken');
     localStorage.removeItem('userRole');
@@ -1719,10 +1784,12 @@ window.addEventListener('popstate', async function(e) {
             document.body.classList.add('body-chat-mode');
             if (chatContent) chatContent.style.display = 'none';
             if (kbPage) kbPage.style.display = 'flex';
-            // [BUG FIX] 知识库页隐藏侧边栏
-            if (sidebar) sidebar.style.display = 'none';
+            // 知识库页始终保留当前工作区侧边栏，与直接点击知识库按钮一致。
+            if (sidebar) sidebar.style.display = '';
             const sidebarOverlay = document.getElementById('sidebarOverlay');
             if (sidebarOverlay) sidebarOverlay.style.display = 'none';
+            await updateKbPageForCurrentAgent();
+            setupKbPageDragDrop();
         } else {
             history.replaceState({page: 'login'}, '');
         }
@@ -1759,12 +1826,13 @@ async function tryAutoLogin() {
         const data = await resp.json();
         if (data.valid && data.username) {
             currentUser = data.username;
+            loadAgentActiveChatIds();
             authToken = token;
             // 初始化完成前保持聊天页隐藏，避免默认标题/欢迎页短暂闪现
             document.getElementById('chatPage').style.display = 'none';
             document.getElementById('headerUserName').textContent = data.username;
             document.getElementById('headerUserAvatar').textContent = data.username[0].toUpperCase();
-            loadChatList();
+            await loadChatList({ autoCreate: false });
             const modelLoadPromise = loadModels();
             await syncAgentsFromServer(true);  // [#12] 自动登录时强制同步
             await saveAgents();
@@ -2077,20 +2145,39 @@ function fillQuick(el) {
 }
 
 // ===== Chat List =====
-async function loadChatList() {
+async function fetchAllChatsForUser(username) {
+    const pageSize = 100;
+    const chats = [];
+    for (let page = 1; page <= 1000; page++) {
+        const query = new URLSearchParams({ username, page: String(page), page_size: String(pageSize) });
+        const resp = await fetch('/api/v1/chats?' + query.toString(), { headers: apiHeaders() });
+        if (!resp.ok) throw new Error(`加载会话失败 (${resp.status})`);
+        const data = await readApiResponse(resp);
+        const pageChats = Array.isArray(data.chats) ? data.chats : [];
+        chats.push(...pageChats);
+        const total = Number(data.total || 0);
+        if (pageChats.length < pageSize || (total && chats.length >= total)) break;
+    }
+    return chats;
+}
+
+async function loadChatList(options = {}) {
     if (!currentUser) return;
+    const requestedUser = currentUser;
+    const requestSeq = ++_chatListLoadSeq;
+    const autoCreate = options.autoCreate !== false;
     try {
-        const resp = await fetch(`/api/v1/chats?username=${encodeURIComponent(currentUser)}`, { headers: apiHeaders() });
-        const data = await resp.json();
-        if (data.success) {
-            allChats = data.chats;
+        const chats = await fetchAllChatsForUser(requestedUser);
+        if (requestSeq !== _chatListLoadSeq || requestedUser !== currentUser) return;
+        if (Array.isArray(chats)) {
+            allChats = chats;
             renderChatList();
             // 按当前模式恢复会话
             const modeChats = getModeChats();
             // 如果当前聊天仍然存在于全部聊天列表中，不要强制跳走
             // （避免智能体对话回复完成后，因过滤不同步导致跳转到空页面）
             const currentChatStillExists = currentChatId && allChats.some(c => c.chat_id === currentChatId);
-            if (modeChats.length === 0 && !currentChatStillExists) {
+            if (autoCreate && currentAgentId && modeChats.length === 0 && !currentChatStillExists) {
                 await createNewChat();
             } else if (!currentChatId || (!currentChatStillExists && !modeChats.some(c => c.chat_id === currentChatId))) {
                 currentChatId = modeChats[0].chat_id;
@@ -2129,37 +2216,46 @@ function renderChatList() {
             closeSidebarOnMobile();
         };
         const safeTitle = escapeHtml(chat.title || '新对话');
-        const safeTitleJs = (chat.title || '新对话').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         const timeStr = formatTime(chat.updated_at || chat.created_at);
         item.innerHTML = `
             <span class="chat-icon">💬</span>
             <span class="chat-title" title="${safeTitle}">${safeTitle}</span>
             <span class="chat-time">${timeStr}</span>
             <div class="chat-actions">
-                <button class="chat-action-btn" onclick="openRename('${chat.chat_id}', '${safeTitleJs}')" title="重命名" aria-label="重命名对话">✏️</button>
-                <button class="chat-action-btn delete" onclick="deleteChatItem('${chat.chat_id}')" title="删除" aria-label="删除对话">🗑️</button>
+                <button class="chat-action-btn" data-action="rename" title="重命名" aria-label="重命名对话">✏️</button>
+                <button class="chat-action-btn delete" data-action="delete" title="删除" aria-label="删除对话">🗑️</button>
             </div>
         `;
+        item.querySelector('[data-action="rename"]').addEventListener('click', () => openRename(chat.chat_id, chat.title || '新对话'));
+        item.querySelector('[data-action="delete"]').addEventListener('click', () => deleteChatItem(chat.chat_id));
         list.appendChild(item);
     });
 }
 
 async function createNewChat() {
     if (!currentUser) return;
+    const requestedUser = currentUser;
+    const requestedAgentId = currentAgentId;
+    const requestedMode = currentMode;
+    const createSeq = ++_chatCreateSeq;
     try {
-        const chatTitle = currentAgentId ? (myAgents.find(a => a.id === currentAgentId)?.name || '新对话') : '新对话';
-        const resp = await fetch(`/api/v1/chats?username=${encodeURIComponent(currentUser)}&title=${encodeURIComponent(chatTitle)}&mode=${currentMode}&agent_id=${currentAgentId || ''}`, { method: 'POST', headers: apiHeaders() });
+        const chatTitle = requestedAgentId ? (myAgents.find(a => a.id === requestedAgentId)?.name || '新对话') : '新对话';
+        const resp = await fetch(`/api/v1/chats?username=${encodeURIComponent(requestedUser)}&title=${encodeURIComponent(chatTitle)}&mode=${requestedMode}&agent_id=${requestedAgentId || ''}`, { method: 'POST', headers: apiHeaders() });
         const data = await resp.json();
         if (data.success) {
+            if (createSeq !== _chatCreateSeq || requestedUser !== currentUser || requestedAgentId !== currentAgentId || requestedMode !== currentMode) {
+                await loadChatList({ autoCreate: false });
+                return;
+            }
             currentChatId = data.chat.chat_id;
-            modeChatId[currentMode] = currentChatId;
+            modeChatId[requestedMode] = currentChatId;
             // Associate chat with current agent
-            if (currentAgentId) {
-                const agent = myAgents.find(a => a.id === currentAgentId);
+            if (requestedAgentId) {
+                const agent = myAgents.find(a => a.id === requestedAgentId);
                 if (agent) {
                     if (!agent.chat_ids) agent.chat_ids = [];
                     if (!agent.chat_ids.includes(data.chat.chat_id)) agent.chat_ids.push(data.chat.chat_id);
-                    agentActiveChatId[currentAgentId] = data.chat.chat_id;
+                    agentActiveChatId[requestedAgentId] = data.chat.chat_id;
                     saveAgentActiveChatIds();
                     saveAgents();
                 }
@@ -2176,6 +2272,8 @@ async function switchChat(chatId) {
     // [BUG FIX #2] 切换聊天时中断正在进行的流式响应
     // 防止旧SSE流在后台继续运行导致 isLoading 锁死、新聊天无法发送消息
     stopGeneration();
+    _chatHistoryLoadSeq++;
+    _chatCreateSeq++;
     currentChatId = chatId;
     modeChatId[currentMode] = chatId;
 
@@ -2212,10 +2310,14 @@ async function switchChat(chatId) {
 
 async function loadChatHistory(chatId) {
     const container = document.getElementById('chatMessages');
+    const requestSeq = ++_chatHistoryLoadSeq;
+    const requestedChatId = chatId;
     container.innerHTML = '';
     try {
         const resp = await fetch(`/api/v1/history/${chatId}`, { headers: apiHeaders() });
+        if (!resp.ok) throw new Error(`加载对话失败 (${resp.status})`);
         const data = await resp.json();
+        if (requestSeq !== _chatHistoryLoadSeq || currentChatId !== requestedChatId) return;
         const messages = data.messages || [];
         if (messages.length > 0) {
             // [性能修复] 限制加载的消息数量，避免DOM过多导致页面卡顿
@@ -2575,7 +2677,7 @@ async function streamChat(url, options, bubble) {
         if (fullText) {
             try {
                 if (typeof marked !== 'undefined') {
-                    bubble.innerHTML = marked.parse(fullText);
+                    bubble.innerHTML = renderSafeMarkdown(fullText);
                     injectDownloadButtons(bubble);
                 } else {
                     bubble.innerHTML = escapeHtml(fullText).replace(/\n/g, '<br>');
@@ -2711,7 +2813,7 @@ function renderBubbleMarkdown(bubble, text) {
     if (typeof marked !== 'undefined' && text) {
         try {
             // 先用 marked 渲染 Markdown
-            bubble.innerHTML = marked.parse(text);
+            bubble.innerHTML = renderSafeMarkdown(text);
             // 渲染后再替换下载链接为可点击按钮（避免 marked 过滤 HTML 标签）
             injectDownloadButtons(bubble);
             return;
@@ -3127,7 +3229,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (item.kind === 'file' && !item.type.startsWith('image/')) {
                 e.preventDefault();
                 const file = item.getAsFile();
-                if (file) { setFilePreview(file); showToast('已粘贴文件，输入问题后发送'); }
+                if (file) { if (file.size > MAX_FILE_SIZE) { showToast('文件大小不能超过 50MB'); return; } setFilePreview(file); showToast('已粘贴文件，输入问题后发送'); }
                 return;
             }
         }
@@ -3135,7 +3237,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     inputContainer.addEventListener('dragover', function(e) { e.preventDefault(); e.stopPropagation(); inputContainer.style.borderColor = 'var(--accent)'; inputContainer.style.background = 'rgba(26,26,26,0.03)'; });
     inputContainer.addEventListener('dragleave', function(e) { e.preventDefault(); e.stopPropagation(); inputContainer.style.borderColor = ''; inputContainer.style.background = ''; });
-    inputContainer.addEventListener('drop', function(e) { e.preventDefault(); e.stopPropagation(); inputContainer.style.borderColor = ''; inputContainer.style.background = ''; const files = e.dataTransfer.files; if (files.length > 0) { setFilePreview(files[0]); showToast('已添加文件，输入问题后发送'); } });
+    inputContainer.addEventListener('drop', function(e) { e.preventDefault(); e.stopPropagation(); inputContainer.style.borderColor = ''; inputContainer.style.background = ''; const files = e.dataTransfer.files; if (files.length > 0) { if (files[0].size > MAX_FILE_SIZE) { showToast('文件大小不能超过 50MB'); return; } setFilePreview(files[0]); showToast('已添加文件，输入问题后发送'); } });
 });
 
 // ===== Knowledge Base Modal =====
@@ -3209,8 +3311,10 @@ async function loadDocList() {
                 else if (doc.endsWith('.xlsx') || doc.endsWith('.xls')) icon = '📊';
                 else if (doc.endsWith('.txt')) icon = '📝';
                 const safeName = escapeHtml(doc);
-                const safeNameForAttr = doc.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                item.innerHTML = `<span class="doc-icon">${icon}</span><span class="doc-name">${safeName}</span><button class="doc-download-btn" onclick="downloadDocument('${safeNameForAttr}')" title="下载" aria-label="下载文档">📥</button>${canDeleteKnowledgeBase() ? `<button class="doc-delete-btn" onclick="deleteDocument('${safeNameForAttr}', this)">删除</button>` : ''}`;
+                item.innerHTML = `<span class="doc-icon">${icon}</span><span class="doc-name">${safeName}</span><button class="doc-download-btn" title="下载" aria-label="下载文档">📥</button>${canDeleteKnowledgeBase() ? '<button class="doc-delete-btn">删除</button>' : ''}`;
+                item.querySelector('.doc-download-btn').addEventListener('click', () => downloadDocument(doc));
+                const deleteBtn = item.querySelector('.doc-delete-btn');
+                if (deleteBtn) deleteBtn.addEventListener('click', () => deleteDocument(doc, deleteBtn));
                 list.appendChild(item);
             });
         } else { list.innerHTML = '<div class="doc-empty">暂无文档，请上传</div>'; }
@@ -3265,18 +3369,34 @@ async function uploadToKnowledgeBase(file) {
         barFill.style.width = '30%';
         const resp = await fetch('/api/v1/upload', { method: 'POST', body: formData, headers: authToken ? { 'Authorization': 'Bearer ' + authToken } : {} });
         barFill.style.width = '80%';
-        const data = await resp.json();
+        const data = await readApiResponse(resp);
         if (resp.ok) { barFill.style.width = '100%'; statusEl.textContent = `✅ 上传成功！文档已索引到${kbLabel}`; statusEl.className = 'progress-status success'; }
         else { barFill.style.width = '100%'; barFill.style.background = 'var(--error)'; statusEl.textContent = '❌ 上传失败：' + (data.detail || '未知错误'); statusEl.className = 'progress-status error'; }
     } catch (e) { barFill.style.width = '100%'; barFill.style.background = 'var(--error)'; statusEl.textContent = '❌ 网络错误，请重试'; statusEl.className = 'progress-status error'; }
     setTimeout(() => { progressEl.style.display = 'none'; barFill.style.background = 'var(--accent)'; }, 3000);
 }
 
-function downloadDocument(filename) {
-    // 在新标签页打开下载链接
+async function downloadDocument(filename) {
     const agentParam = currentAgentId ? `?agent_id=${encodeURIComponent(currentAgentId)}` : '';
     const url = `/api/v1/documents/${encodeURIComponent(filename)}/download${agentParam}`;
-    window.open(url, '_blank');
+    try {
+        const resp = await fetch(url, { headers: apiHeaders() });
+        if (!resp.ok) {
+            const data = await readApiResponse(resp);
+            throw new Error(data.detail || `下载失败 (${resp.status})`);
+        }
+        const blob = await resp.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+        showToast(e.message || '下载失败，请重试', 3000);
+    }
 }
 
 // ===== Utility Functions =====
@@ -3523,7 +3643,7 @@ async function uploadKbDoc(input) {
     formData.append('agent_id', currentAgentId);
     try {
         const resp = await fetch('/api/v1/upload', { method: 'POST', body: formData, headers: authToken ? { 'Authorization': 'Bearer ' + authToken } : {} });
-        const data = await resp.json();
+        const data = await readApiResponse(resp);
         if (data.status === 'success') {
             const chunks = data.detail?.chunks || 0;
             showToast(`文档已上传，共 ${chunks} 个分块`);
@@ -3689,7 +3809,10 @@ async function showKbPage() {
     if (sidebarOverlay) sidebarOverlay.style.display = 'none';
     const docsLoadPromise = updateKbPageForCurrentAgent();
     // [BUG FIX] 推入历史状态，让浏览器←按钮能回到聊天页
-    history.pushState({page: 'kb', workspaceId: currentWorkspaceId, agentId: currentAgentId}, '');
+    if (!history.state || history.state.page !== 'kb'
+            || history.state.agentId !== currentAgentId) {
+        history.pushState({page: 'kb', workspaceId: currentWorkspaceId, agentId: currentAgentId}, '');
+    }
     // Setup drag and drop
     setupKbPageDragDrop();
     await docsLoadPromise;
@@ -3719,29 +3842,33 @@ function hideKbPage() {
 
 async function loadKbPageDocs() {
     const listEl = document.getElementById('kbPageDocList');
-    if (!currentAgentId) {
+    const requestedAgentId = currentAgentId;
+    const requestSeq = ++_kbDocsLoadSeq;
+    if (!requestedAgentId) {
         listEl.innerHTML = '<div class="kb-doc-empty">请先选择一个智能体</div>';
         return;
     }
     listEl.innerHTML = '<div class="kb-doc-empty">加载中...</div>';
     try {
-        const docs = await fetchAllKnowledgeDocuments(currentAgentId);
+        const docs = await fetchAllKnowledgeDocuments(requestedAgentId);
+        if (requestSeq !== _kbDocsLoadSeq || requestedAgentId !== currentAgentId) return;
         
         // Update stats
         document.getElementById('kbStatDocCount').textContent = docs.length;
         // Get chunk count from stats API
         let totalChunks = 0;
         try {
-            const chunkResp = await fetch('/api/v1/documents/stats?agent_id=' + encodeURIComponent(currentAgentId), { headers: apiHeaders() });
+            const chunkResp = await fetch('/api/v1/documents/stats?agent_id=' + encodeURIComponent(requestedAgentId), { headers: apiHeaders() });
             if (chunkResp.ok) {
                 const chunkData = await chunkResp.json();
                 totalChunks = chunkData.total_chunks || 0;
             }
         } catch(e) { console.warn('获取知识库统计失败', e); }
+        if (requestSeq !== _kbDocsLoadSeq || requestedAgentId !== currentAgentId) return;
         document.getElementById('kbStatChunkCount').textContent = totalChunks;
         
         if (docs.length === 0) {
-            listEl.innerHTML = canUploadKnowledgeBase()
+            listEl.innerHTML = canUploadKnowledgeBase(requestedAgentId)
                 ? '<div class="kb-doc-empty">暂无文档，请点击上方区域上传</div>'
                 : '<div class="kb-doc-empty">暂无文档；当前账号对此知识库为只读</div>';
             return;
@@ -3760,21 +3887,27 @@ async function loadKbPageDocs() {
                 iconHtml = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
             }
             const safeName = escapeHtml(docName);
-            const safeNameForJs = docName.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const encodedName = encodeURIComponent(docName);
             html += '<div class="kb-doc-item">' +
                 '<div class="kb-doc-icon">' + iconHtml + '</div>' +
                 '<div class="kb-doc-info">' +
                 '<div class="kb-doc-name" title="' + safeName + '">' + safeName + '</div>' +
                 '<div class="kb-doc-meta">' + ext.toUpperCase() + '</div>' +
                 '</div>' +
-                (canDeleteKnowledgeBase() ? '<button class="kb-doc-delete-btn" onclick="deleteKbPageDoc(\'' + safeNameForJs + '\', this)" title="删除文档" aria-label="删除">' +
+                (canDeleteKnowledgeBase() ? '<button class="kb-doc-delete-btn" data-doc-name="' + encodedName + '" title="删除文档" aria-label="删除">' +
                 '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
                 ' 删除</button>' : '') +
                 '</div>';
         });
         listEl.innerHTML = html;
+        listEl.querySelectorAll('.kb-doc-delete-btn[data-doc-name]').forEach(button => {
+            button.addEventListener('click', () => {
+                deleteKbPageDoc(decodeURIComponent(button.dataset.docName), button);
+            });
+        });
     } catch (e) {
         console.error('加载知识库文档失败', e);
+        if (requestSeq !== _kbDocsLoadSeq || requestedAgentId !== currentAgentId) return;
         listEl.innerHTML = '<div class="kb-doc-empty">加载失败，请重试</div>';
     }
 }
@@ -3802,6 +3935,11 @@ async function uploadKbPageFiles(fileList) {
     }
 
     const input = document.getElementById('kbPageFileInput');
+    const targetAgentId = currentAgentId;
+    if (!targetAgentId || !canUploadKnowledgeBase(targetAgentId)) {
+        showToast('当前账号无权向该知识库上传文档');
+        return;
+    }
     const progressEl = document.getElementById('kbPageProgress');
     const fileNameEl = document.getElementById('kbProgressFileName');
     const barFill = document.getElementById('kbProgressBarFill');
@@ -3818,12 +3956,13 @@ async function uploadKbPageFiles(fileList) {
             const result = await uploadToKbPage(files[i], {
                 index: i + 1,
                 total: files.length,
-                keepVisible: true
+                keepVisible: true,
+                agentId: targetAgentId
             });
             if (result.ok) successCount++;
             else failedFiles.push(files[i].name);
         }
-        await loadKbPageDocs();
+        if (currentAgentId === targetAgentId) await loadKbPageDocs();
         barFill.style.width = '100%';
         fileNameEl.textContent = files.length > 1
             ? `批量上传完成，共选择 ${files.length} 个文件`
@@ -3851,12 +3990,13 @@ async function uploadKbPageFiles(fileList) {
 }
 
 async function uploadToKbPage(file, options = {}) {
+    const targetAgentId = options.agentId || currentAgentId;
     if (file.size > MAX_KB_FILE_SIZE) {
         const message = `文件大小不能超过 ${MAX_KB_FILE_SIZE_MB}MB`;
         showToast(message);
         return { ok: false, error: message };
     }
-    if (!canUploadKnowledgeBase()) {
+    if (!canUploadKnowledgeBase(targetAgentId)) {
         showToast('当前账号无权向该知识库上传文档');
         return { ok: false, error: '无上传权限' };
     }
@@ -3874,7 +4014,7 @@ async function uploadToKbPage(file, options = {}) {
     progressEl.style.display = 'block';
     barFill.style.background = '';
     const isImage = file.type && file.type.startsWith('image/');
-    const agent = myAgents.find(a => a.id === currentAgentId);
+    const agent = myAgents.find(a => a.id === targetAgentId);
     const kbLabel = agent ? agent.name + ' 知识库' : '知识库';
     const batchPrefix = total > 1 ? `[${index}/${total}] ` : '';
     fileNameEl.textContent = batchPrefix + (isImage ? '🖼️ ' : '') + file.name + ' → ' + kbLabel + (isImage ? '（VLM解析中）' : '');
@@ -3883,12 +4023,12 @@ async function uploadToKbPage(file, options = {}) {
     statusEl.className = 'kb-progress-status';
     const formData = new FormData();
     formData.append('file', file);
-    if (currentAgentId) formData.append('agent_id', currentAgentId);
+    if (targetAgentId) formData.append('agent_id', targetAgentId);
     try {
         setProgress(0.3);
         const resp = await fetch('/api/v1/upload', { method: 'POST', body: formData, headers: authToken ? { 'Authorization': 'Bearer ' + authToken } : {} });
         setProgress(0.8);
-        const data = await resp.json();
+        const data = await readApiResponse(resp);
         if (resp.ok && (data.status === 'success' || data.filename)) {
             setProgress(1);
             const chunks = data.detail?.chunks || data.chunks || 0;

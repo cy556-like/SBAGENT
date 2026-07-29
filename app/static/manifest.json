@@ -1,12 +1,12 @@
 {
-    "name": "贵阳吉利汽车 质量改进/精益 智能体",
-    "short_name": "质量改进/精益 智能体",
-    "description": "贵阳吉利汽车质量改进与精益工作智能助手。",
+    "name": "速豹 AI智能体平台",
+    "short_name": "速豹 AI",
+    "description": "速豹质量管理AI智能体平台。",
     "start_url": "/",
     "display": "standalone",
     "orientation": "portrait-primary",
     "background_color": "#F8F7F3",
-    "theme_color": "#1051BF",
+    "theme_color": "#255289",
     "lang": "zh-CN",
     "scope": "/",
     "icons": [

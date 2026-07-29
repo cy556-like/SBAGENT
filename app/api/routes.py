@@ -172,7 +172,10 @@ from app.memory.manager import (
 
 )
 
-from app.config import settings, AVAILABLE_MODELS, get_current_model, get_effective_model, set_current_model
+from app.config import (
+    settings, AVAILABLE_MODELS, get_effective_model,
+    get_user_model, set_user_model, use_model,
+)
 
 from app.utils.stats import record_message, record_session, get_stats
 
@@ -181,6 +184,19 @@ from app.agent.storage import sync_agents as storage_sync_agents, load_agents as
 
 
 logger = logging.getLogger(__name__)
+
+
+def _chat_with_user_model(username: str, *args, **kwargs):
+    """在线程内绑定账号模型，避免并发账号和多 worker 互相覆盖。"""
+    with use_model(get_user_model(username)):
+        return chat(*args, **kwargs)
+
+
+async def _stream_with_user_model(username: str, generator_factory):
+    """在流式生成的完整生命周期内绑定账号模型。"""
+    with use_model(get_user_model(username)):
+        async for item in generator_factory():
+            yield item
 
 
 
@@ -808,7 +824,7 @@ async def chat_api(req: ChatRequest, username: str = Depends(require_auth)):
 
         # 必须用 asyncio.to_thread 放到线程池，否则阻塞整个事件循环导致所有请求卡死
 
-        response = await asyncio.to_thread(chat, req.message, req.session_id, web_search=req.web_search, mode=req.mode, deep_think=req.deep_think, agent_id=req.agent_id, agent_task=req.agent_task, skill=req.skill)
+        response = await asyncio.to_thread(_chat_with_user_model, username, req.message, req.session_id, web_search=req.web_search, mode=req.mode, deep_think=req.deep_think, agent_id=req.agent_id, agent_task=req.agent_task, skill=req.skill)
 
         # 更新会话时间
 
@@ -821,7 +837,7 @@ async def chat_api(req: ChatRequest, username: str = Depends(require_auth)):
 
         # 记录统计
 
-        record_message(username=username or "anonymous", model_id=get_current_model())
+        record_message(username=username or "anonymous", model_id=get_user_model(username))
 
         return ChatResponse(response=response, session_id=req.session_id)
 
@@ -866,11 +882,12 @@ async def chat_stream_api(req: ChatRequest, request: Request, username: str = De
 
     # 记录统计
 
-    record_message(username=username or "anonymous", model_id=get_current_model())
+    record_message(username=username or "anonymous", model_id=get_user_model(username))
 
 
 
-    generator_factory = lambda: chat_stream_generator(req.message, req.session_id, web_search=req.web_search, mode=req.mode, deep_think=req.deep_think, agent_id=req.agent_id, agent_task=req.agent_task, skill=req.skill)
+    raw_generator_factory = lambda: chat_stream_generator(req.message, req.session_id, web_search=req.web_search, mode=req.mode, deep_think=req.deep_think, agent_id=req.agent_id, agent_task=req.agent_task, skill=req.skill)
+    generator_factory = lambda: _stream_with_user_model(username, raw_generator_factory)
 
 
 
@@ -954,7 +971,7 @@ async def chat_with_file_stream(
 
     # 记录统计
 
-    record_message(username=username or "anonymous", model_id=get_current_model())
+    record_message(username=username or "anonymous", model_id=get_user_model(username))
 
 
 
@@ -1020,7 +1037,7 @@ async def chat_with_file_stream(
 
             _sse_stream_wrapper(
 
-                lambda: chat_stream_generator_multimodal(multimodal_content, session_id, agent_id=agent_id, agent_task=agent_task, skill=skill or None),
+                lambda: _stream_with_user_model(username, lambda: chat_stream_generator_multimodal(multimodal_content, session_id, agent_id=agent_id, agent_task=agent_task, skill=skill or None)),
 
                 request,
                 session_id,
@@ -1162,7 +1179,7 @@ async def chat_with_file_stream(
 
         _sse_stream_wrapper(
 
-            lambda: chat_stream_generator(full_message_local, session_id, web_search=web_search, mode=mode, deep_think=deep_think, agent_id=aid_local, agent_task=atask_local, skill=skill or None),
+            lambda: _stream_with_user_model(username, lambda: chat_stream_generator(full_message_local, session_id, web_search=web_search, mode=mode, deep_think=deep_think, agent_id=aid_local, agent_task=atask_local, skill=skill or None)),
 
             request,
             session_id,
@@ -1316,7 +1333,7 @@ async def upload_document(file: UploadFile = File(...), agent_id: str = Form(Non
 
 @router.post("/search", summary="搜索文档内容")
 
-async def search_api(req: SearchRequest, agent_id: str = Query(None, description="智能体ID，为空时搜全局知识库")):
+async def search_api(req: SearchRequest, agent_id: str = Query(None, description="智能体ID，为空时搜全局知识库"), username: str = Depends(require_auth)):
 
     """在文档库中搜索相关内容（支持按智能体隔离）"""
 
@@ -1343,6 +1360,7 @@ async def list_documents(
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
 
     agent_id: str = Query(None, description="智能体ID，为空时查全局知识库"),
+    username: str = Depends(require_auth),
 
 ):
 
@@ -1485,6 +1503,7 @@ async def list_documents(
 @router.get("/documents/stats", summary="获取知识库统计信息")
 async def get_document_stats(
     agent_id: str = Query(None, description="智能体ID，为空时查全局知识库"),
+    username: str = Depends(require_auth),
 ):
     """获取知识库的文档数量和文本片段总数（按智能体隔离）
     
@@ -1649,7 +1668,7 @@ async def modify_document_api(filename: str, req: ModifyDocumentRequest):
 
 @router.get("/documents/{filename}/download", summary="下载知识库文档")
 
-async def download_document(filename: str, agent_id: str = Query(None, description="智能体ID，为空时查全局知识库")):
+async def download_document(filename: str, agent_id: str = Query(None, description="智能体ID，为空时查全局知识库"), username: str = Depends(require_auth)):
 
     """
 
@@ -1860,7 +1879,7 @@ async def export_xlsx_api(req: ExportXlsxRequest):
 
 @router.get("/documents/export-download/{filename}", summary="下载AI导出的文档")
 
-async def download_export_document(filename: str):
+async def download_export_document(filename: str, username: str = Depends(require_auth)):
 
     """
 
@@ -2371,13 +2390,13 @@ async def rename_chat_api(
 
 @router.get("/models", summary="获取可用模型列表")
 
-async def get_models(username: str = Depends(get_current_user)):
+async def get_models(username: str = Depends(require_auth)):
 
     """获取所有可用的 LLM 模型列表"""
 
-    current = get_current_model()
+    current = get_user_model(username)
 
-    return {"models": AVAILABLE_MODELS, "current": current, "effective": get_effective_model()}
+    return {"models": AVAILABLE_MODELS, "current": current, "effective": get_effective_model(username)}
 
 
 
@@ -2385,17 +2404,17 @@ async def get_models(username: str = Depends(get_current_user)):
 
 @router.post("/models/set", summary="切换模型")
 
-async def set_model(req: ModelSetRequest, username: str = Depends(get_current_user)):
+async def set_model(req: ModelSetRequest, username: str = Depends(require_auth)):
 
     """切换当前使用的 LLM 模型"""
 
-    success = set_current_model(req.model_id)
+    success = set_user_model(username, req.model_id)
 
     if success:
-        effective = get_effective_model()
+        effective = get_effective_model(username)
         return {
             "success": True,
-            "current": get_current_model(),
+            "current": get_user_model(username),
             "effective": effective,
             "message": f"已切换到模型: {req.model_id}（实际使用: {effective}）",
         }
@@ -2478,7 +2497,7 @@ async def get_skills():
 
 @router.get("/stats", summary="获取使用统计")
 
-async def get_usage_stats(username: str = Depends(get_current_user)):
+async def get_usage_stats(username: str = Depends(require_admin)):
 
     """获取系统使用统计数据"""
 
@@ -2510,7 +2529,7 @@ async def get_usage_stats(username: str = Depends(get_current_user)):
 
 @router.get("/config", summary="获取运行时配置")
 
-async def get_config(username: str = Depends(require_auth)):
+async def get_config(username: str = Depends(require_admin)):
 
     """获取当前运行时配置（隐藏敏感信息）"""
 
@@ -2546,7 +2565,7 @@ async def get_config(username: str = Depends(require_auth)):
 
 @router.post("/config", summary="更新运行时配置（热更新）")
 
-async def update_config(req: ConfigUpdateRequest, username: str = Depends(require_auth)):
+async def update_config(req: ConfigUpdateRequest, username: str = Depends(require_admin)):
 
     """
 

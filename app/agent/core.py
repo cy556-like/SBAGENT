@@ -29,7 +29,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from app.config import settings, VISION_MODELS, DEFAULT_VISION_MODEL, VISION_API_KEY, VISION_BASE_URL, FAST_MODELS, DEEPSEEK_MODELS, VOLCENGINE_MODELS, QWEN_MODELS, MIMO_MODELS, KIMI_MODELS, GLM_MODELS, AUTO_MODEL_ID, resolve_model_id
+from app.config import settings, VISION_MODELS, DEFAULT_VISION_MODEL, VISION_API_KEY, VISION_BASE_URL, FAST_MODELS, DEEPSEEK_MODELS, VOLCENGINE_MODELS, QWEN_MODELS, MIMO_MODELS, KIMI_MODELS, GLM_MODELS, AUTO_MODEL_ID, resolve_model_id, get_active_model
 from app.agent.tools import ALL_TOOLS, get_tools, set_current_agent_id, set_current_session_id, get_current_session_id, reset_search_count
 from app.agent.prompts import SYSTEM_PROMPT, SYSTEM_PROMPT_WITH_WEB_SEARCH, CHAT_SYSTEM_PROMPT, get_agent_keywords_section
 from app.agent.subagent_prompts import build_subagent_task
@@ -446,7 +446,7 @@ def create_llm(deep_think: bool = False, fast_mode: bool = False, model_override
                             用于 think() 重试时切换，FMEA skill 大 context 场景必需
     """
     global _primary_key_failed
-    selected_model = model_override or settings.LLM_MODEL
+    selected_model = model_override or get_active_model()
     model = resolve_model_id(selected_model)
     if selected_model == AUTO_MODEL_ID:
         logger.info(f"Auto 模式：实际使用模型 {model}")
@@ -828,7 +828,8 @@ def create_agent_graph(web_search: bool = False, skill_mode: bool = False):
     llm = create_llm(skill_mode=skill_mode)
     tools = get_tools(web_search=web_search)
     # [BUG FIX v12] Kimi K3 时清理 tool schema（移除 boolean 类型，Moonshot 不接受）
-    _is_kimi_for_sanitize = settings.LLM_MODEL in KIMI_MODELS or resolve_model_id(settings.LLM_MODEL) in KIMI_MODELS
+    selected_model = get_active_model()
+    _is_kimi_for_sanitize = selected_model in KIMI_MODELS or resolve_model_id(selected_model) in KIMI_MODELS
     tools = _sanitize_tools_for_moonshot(tools, _is_kimi_for_sanitize)
     llm_with_tools = llm.bind_tools(tools)
     system_prompt = SYSTEM_PROMPT_WITH_WEB_SEARCH if web_search else SYSTEM_PROMPT
@@ -893,13 +894,19 @@ def create_agent_graph(web_search: bool = False, skill_mode: bool = False):
 # ===== 4. Agent 实例管理 =====
 _agent_graph = None
 _agent_web_search = False
+_agent_model_id = None
+_agent_skill_mode = False
 
 def get_agent(web_search: bool = False, skill_mode: bool = False):
     """获取 Agent 实例（懒加载，根据 web_search 参数决定是否包含联网搜索工具）"""
-    global _agent_graph, _agent_web_search
-    if _agent_graph is None or _agent_web_search != web_search:
+    global _agent_graph, _agent_web_search, _agent_model_id, _agent_skill_mode
+    model_id = resolve_model_id(get_active_model())
+    if (_agent_graph is None or _agent_web_search != web_search
+            or _agent_model_id != model_id or _agent_skill_mode != skill_mode):
         _agent_graph = create_agent_graph(web_search=web_search, skill_mode=skill_mode)
         _agent_web_search = web_search
+        _agent_model_id = model_id
+        _agent_skill_mode = skill_mode
     return _agent_graph
 
 def reset_agent():
@@ -910,8 +917,10 @@ def reset_agent():
     - 保留缓存后，用户在多个模型间切换时无需重复建立 TCP+TLS 连接（省 500ms~3s）
     - 过期清理由 cleanup_stale_caches() 按 TTL=15min 自动处理
     """
-    global _agent_graph, _agent_prompt_graph_cache
+    global _agent_graph, _agent_prompt_graph_cache, _agent_model_id, _agent_skill_mode
     _agent_graph = None
+    _agent_model_id = None
+    _agent_skill_mode = False
     # [优化] 不再 clear _llm_cache：其他模型的缓存应保留，切回时直接命中
     # 旧代码 _llm_cache.clear() 导致每次切换模型都清空全部缓存，命中率仅~50%
     _agent_prompt_graph_cache.clear()  # Agent Graph 绑定模型，必须清空重建
@@ -1115,7 +1124,8 @@ def get_agent_with_prompt(
     """
     # 生成缓存 key
     prompt_hash = hashlib.md5(custom_system_prompt.encode()).hexdigest()[:16]
-    resolved_model = resolve_model_id(settings.LLM_MODEL)
+    selected_model = get_active_model()
+    resolved_model = resolve_model_id(selected_model)
     cache_key = f"{prompt_hash}:{web_search}:{skill_mode}:{skill or ''}:{resolved_model}"
     
     if cache_key in _agent_prompt_graph_cache:
@@ -1123,7 +1133,7 @@ def get_agent_with_prompt(
         _agent_prompt_graph_timestamps[cache_key] = time.time()  # [性能修复] 更新访问时间
         return _agent_prompt_graph_cache[cache_key]
     
-    _is_kimi_for_sanitize = settings.LLM_MODEL in KIMI_MODELS or resolved_model in KIMI_MODELS
+    _is_kimi_for_sanitize = selected_model in KIMI_MODELS or resolved_model in KIMI_MODELS
     # FMEA 是唯一已确认会稳定触发 Kimi 长响应中断的 Skill。
     # 直接从首轮使用非流式请求，并由 SSE 心跳维持浏览器连接；
     # 8D 和所有非 Kimi 模型仍保持原来的流式行为。
@@ -1710,7 +1720,7 @@ async def chat_stream_generator(user_input: str, session_id: str = "default", we
     # [BUG FIX v16] Kimi K3 + 8D 使用官方原生 JSON Agent 管线。
     # 完整加载 SKILL.md、匹配模板和 references，并检索当前智能体知识库；
     # 仅绕开会把 Moonshot 400 包装成 Connection error 的 LangChain tool_calls 层。
-    resolved_model = resolve_model_id(settings.LLM_MODEL)
+    resolved_model = resolve_model_id(get_active_model())
     if skill == "8d-skill" and resolved_model in KIMI_MODELS:
         async for chunk in _kimi_8d_skill_stream(
             user_input,
@@ -1928,7 +1938,7 @@ async def chat_stream_generator(user_input: str, session_id: str = "default", we
 
     elapsed = time.time() - start_time
     tool_rounds = sum(1 for m in all_messages if isinstance(m, ToolMessage))
-    logger.info(f"Agent 对话完成 | 耗时={elapsed:.2f}s | 模型={settings.LLM_MODEL} | 工具轮数={tool_rounds}")
+    logger.info(f"Agent 对话完成 | 耗时={elapsed:.2f}s | 模型={get_active_model()} | 工具轮数={tool_rounds}")
 
     yield {"type": "done"}
     _cleanup_session_cancel(session_id)  # [v6] 正常结束清理
@@ -2051,7 +2061,7 @@ async def chat_stream_generator_multimodal(multimodal_content: list, session_id:
     set_current_agent_id(agent_id)
     set_current_session_id(session_id)
     resolved_agent_task = _resolve_agent_task(agent_task, agent_id)
-    current_model = settings.LLM_MODEL
+    current_model = get_active_model()
     use_model = current_model
     if current_model not in VISION_MODELS:
         use_model = DEFAULT_VISION_MODEL

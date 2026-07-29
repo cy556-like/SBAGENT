@@ -4,15 +4,16 @@
  * 版本: 1.1.0
  */
 
-const CACHE_NAME = 'jlagent-v1.1.0';
-const STATIC_CACHE = 'jlagent-static-v1.1.0';
-const DYNAMIC_CACHE = 'jlagent-dynamic-v1.1.0';
+const CACHE_NAME = 'sbagent-v1.2.0';
+const STATIC_CACHE = 'sbagent-static-v1.2.0';
+const DYNAMIC_CACHE = 'sbagent-dynamic-v1.2.0';
 
 // 需要预缓存的静态资源
 const PRECACHE_URLS = [
     '/',
-    '/static/css/style.css',
-    '/static/js/app.js',
+    '/static/css/style.css?v=20260728d',
+    '/static/js/subagents-data.js?v=20260728c',
+    '/static/js/app.js?v=20260729e',
     '/static/manifest.json',
     '/static/icons/icon-gy.svg',
     '/static/icons/icon-192.png',
