@@ -1547,6 +1547,30 @@ function copyCodeBlock(codeId, btn) {
 // ===== Model Management =====
 let currentModelId = 'auto';
 let modelSwitchInProgress = false;
+let loginInProgress = false;
+
+// 登录后的辅助数据（聊天记录、智能体配置、模型列表）不应阻塞进入系统。
+// 保留原请求继续完成的机会，但超过时限后先展示七大智能体入口。
+function settleLoginInit(task, label, timeoutMs = 12000) {
+    const pending = Promise.resolve()
+        .then(task)
+        .then(() => ({ label, ok: true }))
+        .catch(error => ({ label, ok: false, error }));
+    const timeout = new Promise(resolve => {
+        window.setTimeout(() => resolve({ label, ok: false, timeout: true }), timeoutMs);
+    });
+    return Promise.race([pending, timeout]);
+}
+
+async function fetchWithTimeout(resource, options = {}, timeoutMs = 12000) {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(resource, { ...options, signal: controller.signal });
+    } finally {
+        window.clearTimeout(timer);
+    }
+}
 
 async function loadModels() {
     const select = document.getElementById('modelSelect');
@@ -1670,12 +1694,16 @@ document.addEventListener('keydown', function(e) {
 });
 
 async function doLogin() {
+    if (loginInProgress) return;
     const username = document.getElementById('loginUser').value.trim();
     const password = document.getElementById('loginPass').value.trim();
     const msgEl = document.getElementById('loginMsg');
     if (!username || !password) { msgEl.className = 'msg-box error'; msgEl.textContent = '请输入用户名和密码'; return; }
+    loginInProgress = true;
+    const loginButton = document.querySelector('.btn-login');
+    if (loginButton) loginButton.disabled = true;
     try {
-        const resp = await fetch('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+        const resp = await fetchWithTimeout('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
         const data = await resp.json();
         if (data.success) {
             currentUser = username;
@@ -1684,7 +1712,8 @@ async function doLogin() {
             if (data.token) { authToken = data.token; localStorage.setItem('authToken', data.token); }
             localStorage.setItem('userRole', userRole);
             msgEl.className = 'msg-box success'; msgEl.textContent = '登录成功！';
-            setTimeout(async () => {
+            await new Promise(resolve => window.setTimeout(resolve, 500));
+            {
                 // 初始化完成前保持入口页与聊天页隐藏，避免界面闪现
                 document.getElementById('chatPage').style.display = 'none';
                 document.getElementById('agentPortalPage').style.display = 'none';
@@ -1694,11 +1723,14 @@ async function doLogin() {
                 if (userRole === 'admin') {
                     document.getElementById('headerUserName').textContent = username + ' (管理员)';
                 }
-                await loadChatList({ autoCreate: false });
-                const modelLoadPromise = loadModels();
-                await syncAgentsFromServer(true);  // [#12] 登录时强制同步一次，内部已调用 rebuildChatIdsFromServer（会GET /chats）
-                await saveAgents();  // 将数字郑老师和71个固定子智能体写回服务端
-                await modelLoadPromise;
+                const initResults = await Promise.all([
+                    settleLoginInit(() => loadChatList({ autoCreate: false }), '聊天记录'),
+                    settleLoginInit(() => loadModels(), '模型列表'),
+                    settleLoginInit(async () => {
+                        await syncAgentsFromServer(true);
+                        await saveAgents();
+                    }, '智能体配置'),
+                ]);
                 renderMyAgents();
                 renderAgentPortal();
                 updateKbUploadVisibility();
@@ -1709,9 +1741,21 @@ async function doLogin() {
                 document.getElementById('loginModal').classList.remove('show');
                 showAgentPortal(false);
                 history.pushState({page: 'portal'}, '');
-            }, 500);
+                const delayed = initResults.filter(item => !item.ok).map(item => item.label);
+                if (delayed.length) {
+                    console.warn('登录初始化未在时限内完成：', delayed);
+                    showToast(`${delayed.join('、')}加载较慢，已先进入智能体选择页`, 4500);
+                }
+            }
         } else { msgEl.className = 'msg-box error'; msgEl.textContent = data.message || '登录失败'; }
-    } catch (e) { msgEl.className = 'msg-box error'; msgEl.textContent = '网络错误'; }
+    } catch (e) {
+        msgEl.className = 'msg-box error';
+        msgEl.textContent = e && e.name === 'AbortError' ? '登录请求超时，请重试' : '网络错误';
+    }
+    finally {
+        loginInProgress = false;
+        if (loginButton) loginButton.disabled = false;
+    }
 }
 
 async function doRegister() {

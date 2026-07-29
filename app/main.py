@@ -234,7 +234,17 @@ def create_app() -> FastAPI:
     # 根路径重定向到美化的前端页面
     @app.get("/")
     async def root():
-        return FileResponse(os.path.join(static_dir, "index.html"))
+        # 首页 HTML 不能被浏览器历史记录复用旧版本；否则旧的 index.html
+        # 可能会搭配新/旧不一致的 JS，导致登录后的初始化停在半途中。
+        # CSS、JS 和图片仍通过带版本号的 URL 正常缓存，不会每次重新下载。
+        return FileResponse(
+            os.path.join(static_dir, "index.html"),
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
     # 健康检查（基础版）
     @app.get("/health")
@@ -554,4 +564,3 @@ if __name__ == "__main__":
         # 默认5秒，改为30秒（SSE流式响应需要较长的空闲间隔）
         timeout_keep_alive=30,
     )
-
