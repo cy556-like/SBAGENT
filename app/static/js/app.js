@@ -143,7 +143,7 @@ const ZHENG_TEACHER_PROFILE = {
 const CHEN_TEACHER_PROFILE = {
     name: '陈茂林老师',
     badge: 'AI分身',
-    avatar: '/static/images/chen-maolin-avatar.jpg',
+    avatar: '/static/images/chen-maolin-avatar-hd.png',
     avatarAlt: '陈茂林老师头像',
     greeting: '我是陈茂林老师AI分身',
     greetingText: '有任何商用车质量管理、项目开发质量与质量体系改进方面的问题，直接问我吧',
@@ -153,6 +153,10 @@ const CHEN_TEACHER_PROFILE = {
         expertise: {
             label: '专业擅长',
             content: '精通商用车质量管理，长期从事汽车行业质量工作，对项目开发质量、质量体系建设、审核辅导与企业质量提升具有丰富实践经验。'
+        },
+        qa: {
+            label: '问答的优点',
+            content: '问答这种学习方式几乎与人类文明的历史一样长。从《论语》中的一问一答，再到今天我们在质量和精益提升方面的交流，问答一直都是一种比较高效的学习方式。以需求驱动学习，尽可能达成即学即用的目标。'
         },
         profile: {
             label: '个人简介',
