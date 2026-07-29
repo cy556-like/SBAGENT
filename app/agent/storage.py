@@ -39,6 +39,9 @@ WORKSPACE_SUBAGENT_COUNTS = [
     ('continuous-improvement-agent', 10),
 ]
 
+PROJECT_DEVELOPMENT_WORKSPACE_ID = 'project-development-quality-agent'
+CHEN_TEACHER_AGENT_ID = f'{PROJECT_DEVELOPMENT_WORKSPACE_ID}-digital-chen-teacher-agent'
+
 SUBAGENT_IDS = [
     f'{workspace_id}-sub-{index:02d}'
     for workspace_id, count in WORKSPACE_SUBAGENT_COUNTS
@@ -46,7 +49,8 @@ SUBAGENT_IDS = [
 ]
 
 WORKSPACE_TEACHER_IDS = [
-    f'{workspace_id}-digital-zheng-teacher-agent'
+    CHEN_TEACHER_AGENT_ID if workspace_id == PROJECT_DEVELOPMENT_WORKSPACE_ID
+    else f'{workspace_id}-digital-zheng-teacher-agent'
     for workspace_id, _ in WORKSPACE_SUBAGENT_COUNTS
 ]
 
@@ -63,7 +67,7 @@ ALLOWED_AGENT_IDS = {
     *LEGACY_WORKSPACE_AGENT_IDS,
 }
 
-# 固定排序：七个工作区各自的数字郑老师、71 个子智能体、旧版隐藏智能体。
+# 固定排序：项目开发质量工作区的数字陈老师、其余六个工作区的数字郑老师、71 个子智能体、旧版隐藏智能体。
 AGENT_SORT_ORDER = [
     *WORKSPACE_TEACHER_IDS,
     *SUBAGENT_IDS,

@@ -34,13 +34,21 @@ const MAX_KB_FILE_SIZE_MB = 200;
 const MAX_KB_FILE_SIZE = MAX_KB_FILE_SIZE_MB * 1024 * 1024;
 const DIGITAL_TEACHER_AGENT_ID = 'digital-zheng-teacher-agent';
 const DIGITAL_TEACHER_AGENT_SUFFIX = '-digital-zheng-teacher-agent';
+const PROJECT_DEVELOPMENT_WORKSPACE_ID = 'project-development-quality-agent';
+const DIGITAL_CHEN_TEACHER_AGENT_ID = `${PROJECT_DEVELOPMENT_WORKSPACE_ID}-digital-chen-teacher-agent`;
+const DIGITAL_CHEN_TEACHER_AGENT_SUFFIX = '-digital-chen-teacher-agent';
 const FULL_KB_ADMIN_USERNAME = 'adminsubao';
 
 function isDigitalTeacherAgent(agentId) {
     return Boolean(agentId && (
         agentId === DIGITAL_TEACHER_AGENT_ID ||
-        agentId.endsWith(DIGITAL_TEACHER_AGENT_SUFFIX)
+        agentId.endsWith(DIGITAL_TEACHER_AGENT_SUFFIX) ||
+        agentId.endsWith(DIGITAL_CHEN_TEACHER_AGENT_SUFFIX)
     ));
+}
+
+function isDigitalChenTeacherAgent(agentId) {
+    return agentId === DIGITAL_CHEN_TEACHER_AGENT_ID;
 }
 
 function canUploadKnowledgeBase(agentId = currentAgentId) {
@@ -69,17 +77,19 @@ const WORKSPACE_CONFIG = window.SUBAO_WORKSPACE_CONFIG || {};
 const SUBAGENT_CONFIG_BY_ID = window.SUBAO_SUBAGENT_INDEX || {};
 const PORTAL_AGENT_IDS = Object.keys(WORKSPACE_CONFIG);
 const WORKSPACE_TEACHER_AGENT_IDS = PORTAL_AGENT_IDS.map(
-    workspaceId => `${workspaceId}${DIGITAL_TEACHER_AGENT_SUFFIX}`
+    workspaceId => workspaceId === PROJECT_DEVELOPMENT_WORKSPACE_ID
+        ? DIGITAL_CHEN_TEACHER_AGENT_ID
+        : `${workspaceId}${DIGITAL_TEACHER_AGENT_SUFFIX}`
 );
 const TEACHER_WORKSPACE_BY_ID = Object.fromEntries(
-    PORTAL_AGENT_IDS.map(workspaceId => [
-        `${workspaceId}${DIGITAL_TEACHER_AGENT_SUFFIX}`,
-        workspaceId
-    ])
+    PORTAL_AGENT_IDS.map(workspaceId => [getWorkspaceTeacherAgentId(workspaceId), workspaceId])
 );
 
 function getWorkspaceTeacherAgentId(workspaceId) {
-    return workspaceId ? `${workspaceId}${DIGITAL_TEACHER_AGENT_SUFFIX}` : null;
+    if (!workspaceId) return null;
+    return workspaceId === PROJECT_DEVELOPMENT_WORKSPACE_ID
+        ? DIGITAL_CHEN_TEACHER_AGENT_ID
+        : `${workspaceId}${DIGITAL_TEACHER_AGENT_SUFFIX}`;
 }
 
 // 侧边栏内置智能体：数字郑老师固定置顶，其余为当前工作空间的专属子智能体。
@@ -129,6 +139,37 @@ const ZHENG_TEACHER_PROFILE = {
         }
     }
 };
+
+const CHEN_TEACHER_PROFILE = {
+    name: '陈茂林老师',
+    badge: 'AI分身',
+    avatar: '/static/images/chen-maolin-avatar.jpg',
+    avatarAlt: '陈茂林老师头像',
+    greeting: '我是陈茂林老师AI分身',
+    greetingText: '有任何商用车质量管理、项目开发质量与质量体系改进方面的问题，直接问我吧',
+    tags: ['商用车质量专家', '曾任东风汽车有限公司质量首席', '汽车行业质量工作37年'],
+    meta: '商用车质量管理37年 · 项目开发质量专家',
+    sections: {
+        expertise: {
+            label: '专业擅长',
+            content: '精通商用车质量管理，长期从事汽车行业质量工作，对项目开发质量、质量体系建设、审核辅导与企业质量提升具有丰富实践经验。'
+        },
+        profile: {
+            label: '个人简介',
+            content: '具有 ASES 审核教练员资质，在东风商用车、东风日产质量管理方面具有较高声誉。从一线质量工程师起步，对项目开发质量尤为精通。在北京全质科技股份有限公司担任高级合伙人，参与多家大型企业的改进工作，帮助全质科技客户进行提升，并负责全质咨询师的培训和培养工作。'
+        },
+        wechat: {
+            label: '个人微信',
+            content: '如需要联系陈茂林老师，请加微信：',
+            image: '/static/images/chen-maolin-wechat.jpg',
+            imageAlt: '陈茂林老师个人微信二维码'
+        }
+    }
+};
+
+function getDigitalTeacherProfile(agentId) {
+    return isDigitalChenTeacherAgent(agentId) ? CHEN_TEACHER_PROFILE : ZHENG_TEACHER_PROFILE;
+}
 
 // 每个智能体的欢迎页配置（名称、描述、推荐问题）
 const AGENT_WELCOME_CONFIG = {
@@ -452,10 +493,13 @@ function buildBuiltinAgentDefaults() {
     WORKSPACE_TEACHER_AGENT_IDS.forEach(agentId => {
         const workspaceId = TEACHER_WORKSPACE_BY_ID[agentId];
         const workspaceName = WORKSPACE_CONFIG[workspaceId]?.name || '质量管理智能体';
+        const isChenTeacher = isDigitalChenTeacherAgent(agentId);
         defaults[agentId] = {
-            name: '数字郑老师',
-            task: `你是“${workspaceName}”工作区内的郑伟老师AI分身，面向质量改进与精益工作，负责专业答疑、方法辅导、案例复盘和知识传承。你必须始终自称“郑伟老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持郑伟老师AI分身的身份。请始终优先检索数字郑老师在七个工作区共享的统一知识库后回答专业问题，不得读取其他子智能体的独立知识库，并明确区分知识库事实与通用建议。`,
-            summary: '质量改进与精益专业辅导'
+            name: isChenTeacher ? '数字陈老师' : '数字郑老师',
+            task: isChenTeacher
+                ? `你是“${workspaceName}”工作区内的陈茂林老师AI分身。你是商用车质量专家，曾担任东风汽车有限公司质量首席，从事汽车行业质量工作37年，精通商用车质量管理与项目开发质量。你必须始终自称“陈茂林老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持陈老师身份。请始终优先检索数字陈老师独立知识库后回答专业问题；不得读取数字郑老师共享知识库或其他子智能体的独立知识库，并明确区分知识库事实与通用建议。`
+                : `你是“${workspaceName}”工作区内的郑伟老师AI分身，面向质量改进与精益工作，负责专业答疑、方法辅导、案例复盘和知识传承。你必须始终自称“郑伟老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持郑伟老师AI分身的身份。请始终优先检索数字郑老师在六个工作区共享的统一知识库后回答专业问题，不得读取数字陈老师或其他子智能体的独立知识库，并明确区分知识库事实与通用建议。`,
+            summary: isChenTeacher ? '商用车项目开发质量专业辅导' : '质量改进与精益专业辅导'
         };
     });
     Object.values(SUBAGENT_CONFIG_BY_ID).forEach(subagent => {
@@ -1880,7 +1924,7 @@ function updateWelcomeContent() {
         chatContent.classList.toggle('subagent-welcome-active', isSubagent);
     }
     if (isZhengTeacher) {
-        renderZhengTeacherWelcome(welcomeEl);
+        renderZhengTeacherWelcome(welcomeEl, currentAgentId);
         return;
     }
 
@@ -2068,8 +2112,8 @@ function renderSubagentWelcome(welcomeEl, config) {
 
 // 数字郑老师不显示关键词问题，使用人物资料卡专属欢迎页。
 // 用户发送第一条消息后，updateCenteredMode 会自动隐藏整个欢迎页。
-function renderZhengTeacherWelcome(welcomeEl) {
-    const profile = ZHENG_TEACHER_PROFILE;
+function renderZhengTeacherWelcome(welcomeEl, agentId = currentAgentId) {
+    const profile = getDigitalTeacherProfile(agentId);
     const defaultSection = profile.sections.expertise;
     const tagsHtml = profile.tags
         .map(tag => `<span class="zheng-profile-tag">${escapeHtml(tag)}</span>`)
@@ -2085,17 +2129,17 @@ function renderZhengTeacherWelcome(welcomeEl) {
         .join('');
 
     welcomeEl.innerHTML = `
-        <section class="zheng-profile-welcome" aria-label="郑伟老师AI分身介绍">
+        <section class="zheng-profile-welcome" aria-label="${escapeHtml(profile.name)}AI分身介绍">
             <div class="zheng-profile-stage">
                 <div class="zheng-profile-card">
-                    <img class="zheng-profile-avatar" src="/static/images/zheng-wei-avatar.jpg" alt="郑伟老师头像">
+                    <img class="zheng-profile-avatar${isDigitalChenTeacherAgent(agentId) ? ' chen-teacher-avatar' : ''}" src="${escapeHtml(profile.avatar || '/static/images/zheng-wei-avatar.jpg')}" alt="${escapeHtml(profile.avatarAlt || '郑伟老师头像')}">
                     <div class="zheng-profile-heading">
                         <h2>${escapeHtml(profile.name)}</h2>
                         <span class="zheng-ai-badge">${escapeHtml(profile.badge)}</span>
                     </div>
                     <div class="zheng-profile-tags">${tagsHtml}</div>
                     <p class="zheng-profile-meta">${escapeHtml(profile.meta)}</p>
-                    <div class="zheng-profile-tabs" role="tablist" aria-label="郑伟老师资料分类">
+                    <div class="zheng-profile-tabs" role="tablist" aria-label="${escapeHtml(profile.name)}资料分类">
                         ${tabsHtml}
                     </div>
                     <div class="zheng-profile-panel" id="zhengProfileContent" role="tabpanel">
@@ -2104,8 +2148,8 @@ function renderZhengTeacherWelcome(welcomeEl) {
                 </div>
             </div>
             <div class="zheng-profile-greeting" id="zhengProfileGreeting">
-                <h3>我是郑伟老师AI分身</h3>
-                <p>有任何质量改进、精益、生产技术与制造运营提升方面的问题，直接问我吧</p>
+                <h3>${escapeHtml(profile.greeting || '我是郑伟老师AI分身')}</h3>
+                <p>${escapeHtml(profile.greetingText || '有任何质量改进、精益、生产技术与制造运营提升方面的问题，直接问我吧')}</p>
             </div>
         </section>
     `;
@@ -2119,7 +2163,8 @@ function renderZhengProfileSection(section) {
 }
 
 function showZhengProfileTab(button, sectionKey) {
-    const section = ZHENG_TEACHER_PROFILE.sections[sectionKey];
+    const profile = getDigitalTeacherProfile(currentAgentId);
+    const section = profile.sections[sectionKey];
     const content = document.getElementById('zhengProfileContent');
     if (!button || !section || !content) return;
 

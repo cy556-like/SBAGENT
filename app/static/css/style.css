@@ -1722,6 +1722,11 @@ html { scroll-behavior: smooth; }
     background: #47aeda;
     box-shadow: 0 12px 26px rgba(49, 92, 152, 0.22);
 }
+
+/* 陈茂林老师原图为半身照；头像卡片仅保留头部与上肩区域。 */
+.zheng-profile-avatar.chen-teacher-avatar {
+    object-position: center 18%;
+}
 .zheng-profile-heading {
     display: flex;
     align-items: center;
