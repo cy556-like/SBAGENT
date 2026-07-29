@@ -24,6 +24,7 @@ let lastMessageText = '';
 let webSearchEnabled = false;
 let deepThinkEnabled = false;
 let currentMode = 'agent';
+const NAVIGATION_STATE_KEY = 'subaoNavigationState';
 let selectedSkill = null;  // 当前选中的技能（如 '8d-skill'）
 let _chatListLoadSeq = 0;
 let _chatHistoryLoadSeq = 0;
@@ -38,6 +39,44 @@ const PROJECT_DEVELOPMENT_WORKSPACE_ID = 'project-development-quality-agent';
 const DIGITAL_CHEN_TEACHER_AGENT_ID = `${PROJECT_DEVELOPMENT_WORKSPACE_ID}-digital-chen-teacher-agent`;
 const DIGITAL_CHEN_TEACHER_AGENT_SUFFIX = '-digital-chen-teacher-agent';
 const FULL_KB_ADMIN_USERNAME = 'adminsubao';
+
+function isRestorableNavigationState(state) {
+    if (!state || !['portal', 'chat', 'kb'].includes(state.page)) return false;
+    if (state.page === 'portal') return true;
+    return Boolean(
+        state.workspaceId &&
+        WORKSPACE_CONFIG[state.workspaceId] &&
+        state.agentId &&
+        ALLOWED_AGENT_IDS.includes(state.agentId)
+    );
+}
+
+function rememberNavigationState(state) {
+    if (!isRestorableNavigationState(state)) return;
+    try {
+        sessionStorage.setItem(NAVIGATION_STATE_KEY, JSON.stringify(state));
+    } catch (e) {
+        console.warn('保存页面状态失败', e);
+    }
+}
+
+function readNavigationState() {
+    if (isRestorableNavigationState(history.state)) {
+        return { ...history.state };
+    }
+    try {
+        const saved = JSON.parse(sessionStorage.getItem(NAVIGATION_STATE_KEY) || 'null');
+        return isRestorableNavigationState(saved) ? saved : { page: 'portal' };
+    } catch (e) {
+        return { page: 'portal' };
+    }
+}
+
+function clearNavigationState() {
+    try {
+        sessionStorage.removeItem(NAVIGATION_STATE_KEY);
+    } catch (e) {}
+}
 
 function isDigitalTeacherAgent(agentId) {
     return Boolean(agentId && (
@@ -613,9 +652,13 @@ function showAgentPortal(pushHistory = true) {
     document.body.classList.add('body-portal-mode');
     renderAgentPortal();
 
+    const navigationState = {page: 'portal'};
     if (pushHistory && (!history.state || history.state.page !== 'portal')) {
-        history.pushState({page: 'portal'}, '');
+        history.pushState(navigationState, '');
+    } else if (!pushHistory) {
+        history.replaceState(navigationState, '');
     }
+    rememberNavigationState(navigationState);
 }
 
 async function enterAgentFromPortal(workspaceId, pushHistory = true) {
@@ -633,9 +676,13 @@ async function enterAgentFromPortal(workspaceId, pushHistory = true) {
     currentWorkspaceId = workspaceId;
     await switchToAgent(firstSubagent.id);
 
+    const navigationState = {page: 'chat', workspaceId: workspaceId, agentId: firstSubagent.id};
     if (pushHistory) {
-        history.pushState({page: 'chat', workspaceId: workspaceId, agentId: firstSubagent.id}, '');
+        history.pushState(navigationState, '');
+    } else {
+        history.replaceState(navigationState, '');
     }
+    rememberNavigationState(navigationState);
 }
 
 function _resolveMergeDirection(local, serverAgent) {
@@ -937,7 +984,9 @@ async function switchToAgent(agentId) {
     if (wasKbPageOpen) {
         kbPage.style.display = 'none';
         if (history.state && history.state.page === 'kb') {
-            history.replaceState({page: 'chat', workspaceId: currentWorkspaceId, agentId: agentId}, '');
+            const navigationState = {page: 'chat', workspaceId: currentWorkspaceId, agentId: agentId};
+            history.replaceState(navigationState, '');
+            rememberNavigationState(navigationState);
         }
     }
 }
@@ -994,7 +1043,9 @@ function renderMyAgents() {
             const aid = agentItem.getAttribute('data-agent-id');
             if (aid) {
                 await switchToAgent(aid);
-                history.replaceState({page: 'chat', workspaceId: currentWorkspaceId, agentId: aid}, '');
+                const navigationState = {page: 'chat', workspaceId: currentWorkspaceId, agentId: aid};
+                history.replaceState(navigationState, '');
+                rememberNavigationState(navigationState);
                 closeSidebarOnMobile();
             }
         }
@@ -1014,6 +1065,12 @@ async function createNewChatForAgent(agentId) {
 
     // 切换到该智能体
     currentAgentId = agentId;
+    const subagentConfig = SUBAGENT_CONFIG_BY_ID[agentId];
+    if (subagentConfig) {
+        currentWorkspaceId = subagentConfig.workspaceId;
+    } else if (TEACHER_WORKSPACE_BY_ID[agentId]) {
+        currentWorkspaceId = TEACHER_WORKSPACE_BY_ID[agentId];
+    }
     // Skills 模式属于当前子智能体的一次工作状态，切换后必须退出，避免串到下一智能体。
     selectedSkill = null;
     const skillModeBar = document.getElementById('skillModeBar');
@@ -1049,6 +1106,14 @@ async function createNewChatForAgent(agentId) {
             }
             currentChatId = data.chat.chat_id;
             modeChatId['agent'] = currentChatId;
+            const navigationState = {
+                page: 'chat',
+                workspaceId: currentWorkspaceId,
+                agentId: agentId,
+                chatId: currentChatId
+            };
+            history.replaceState(navigationState, '');
+            rememberNavigationState(navigationState);
 
             // 关联智能体
             if (agent) {
@@ -1626,7 +1691,7 @@ async function switchModel() {
             ? `Auto：当前实际使用 ${data.effective || 'GLM-5.2'}`
             : `当前模型：${name}`;
         showToast(currentModelId === 'auto'
-            ? `已切换到 Auto，当前使用 ${data.effective || 'GLM-5.2'}`
+            ? '已切换到Auto模式，自动选择最合适的大模型。'
             : `已切换到模型：${name}`);
     } catch (e) {
         console.error('切换模型失败', e);
@@ -1739,8 +1804,7 @@ async function doLogin() {
                 currentWorkspaceId = null;
                 // 登录成功后先进入7个智能体的选择页
                 document.getElementById('loginModal').classList.remove('show');
-                showAgentPortal(false);
-                history.pushState({page: 'portal'}, '');
+                showAgentPortal(true);
                 const delayed = initResults.filter(item => !item.ok).map(item => item.label);
                 if (delayed.length) {
                     console.warn('登录初始化未在时限内完成：', delayed);
@@ -1777,6 +1841,7 @@ function doLogout() {
     currentUser = null; userRole = null; authToken = null; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; currentWorkspaceId = null; agentKbUploadMode = false;
     localStorage.removeItem('authToken');
     localStorage.removeItem('userRole');
+    clearNavigationState();
     // Hide KB page if open
     const kbPage = document.getElementById('kbPage');
     if (kbPage) kbPage.style.display = 'none';
@@ -1850,6 +1915,7 @@ window.addEventListener('popstate', async function(e) {
             if (kbPage) kbPage.style.display = 'none';
             if (chatContent) chatContent.style.display = 'flex';
             if (sidebar) sidebar.style.display = '';
+            rememberNavigationState(e.state);
         } else {
             // Not authenticated anymore, go back to login
             history.replaceState({page: 'login'}, '');
@@ -1882,6 +1948,7 @@ window.addEventListener('popstate', async function(e) {
             if (sidebarOverlay) sidebarOverlay.style.display = 'none';
             await updateKbPageForCurrentAgent();
             setupKbPageDragDrop();
+            rememberNavigationState(e.state);
         } else {
             history.replaceState({page: 'login'}, '');
         }
@@ -1892,6 +1959,7 @@ window.addEventListener('popstate', async function(e) {
             currentUser = null; userRole = null; authToken = null; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; currentWorkspaceId = null; agentKbUploadMode = false;
             localStorage.removeItem('authToken');
             localStorage.removeItem('userRole');
+            clearNavigationState();
             if (kbPage) kbPage.style.display = 'none';
             if (agentPortalPage) agentPortalPage.style.display = 'none';
             chatPage.style.display = 'none';
@@ -1909,41 +1977,96 @@ window.addEventListener('popstate', async function(e) {
     }
 });
 
+async function restoreAuthenticatedView(targetState) {
+    const state = isRestorableNavigationState(targetState) ? targetState : {page: 'portal'};
+    if (state.page === 'portal') {
+        showAgentPortal(false);
+        return;
+    }
+
+    const loginModal = document.getElementById('loginModal');
+    const agentPortalPage = document.getElementById('agentPortalPage');
+    const chatPage = document.getElementById('chatPage');
+    const chatContent = document.getElementById('chatContent');
+    const kbPage = document.getElementById('kbPage');
+    const sidebar = document.getElementById('sidebar');
+
+    if (loginModal) loginModal.classList.remove('show');
+    if (agentPortalPage) agentPortalPage.style.display = 'none';
+    if (chatPage) chatPage.style.display = 'flex';
+    if (kbPage) kbPage.style.display = 'none';
+    document.body.classList.remove('body-portal-mode');
+    document.body.classList.add('body-chat-mode');
+
+    currentWorkspaceId = state.workspaceId;
+    await switchToAgent(state.agentId);
+
+    if (state.page === 'kb') {
+        if (chatContent) chatContent.style.display = 'none';
+        if (kbPage) kbPage.style.display = 'flex';
+        if (sidebar) sidebar.style.display = '';
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
+        if (sidebarOverlay) sidebarOverlay.style.display = 'none';
+        setupKbPageDragDrop();
+        await updateKbPageForCurrentAgent();
+    } else {
+        if (chatContent) chatContent.style.display = 'flex';
+        if (state.chatId && allChats.some(chat => chat.chat_id === state.chatId)) {
+            await switchChat(state.chatId);
+        }
+    }
+
+    history.replaceState(state, '');
+    rememberNavigationState(state);
+}
+
 // ===== Auto-login with JWT token =====
-async function tryAutoLogin() {
+async function tryAutoLogin(targetState = readNavigationState()) {
     const token = localStorage.getItem('authToken');
     if (!token) return false;
     try {
-        const resp = await fetch('/api/v1/auth/me', { headers: { 'Authorization': 'Bearer ' + token } });
+        const resp = await fetchWithTimeout(
+            '/api/v1/auth/me',
+            {headers: {'Authorization': 'Bearer ' + token}},
+            12000
+        );
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         if (data.valid && data.username) {
             currentUser = data.username;
             loadAgentActiveChatIds();
             authToken = token;
+            userRole = data.role || localStorage.getItem('userRole') || 'user';
+            localStorage.setItem('userRole', userRole);
             // 初始化完成前保持聊天页隐藏，避免默认标题/欢迎页短暂闪现
             document.getElementById('chatPage').style.display = 'none';
-            document.getElementById('headerUserName').textContent = data.username;
+            document.getElementById('headerUserName').textContent = userRole === 'admin'
+                ? `${data.username} (管理员)`
+                : data.username;
             document.getElementById('headerUserAvatar').textContent = data.username[0].toUpperCase();
-            await loadChatList({ autoCreate: false });
-            const modelLoadPromise = loadModels();
-            await syncAgentsFromServer(true);  // [#12] 自动登录时强制同步
-            await saveAgents();
-            await modelLoadPromise;
+            await Promise.all([
+                settleLoginInit(() => loadChatList({autoCreate: false}), '聊天记录'),
+                settleLoginInit(() => loadModels(), '模型列表'),
+                settleLoginInit(async () => {
+                    await syncAgentsFromServer(true);
+                    await saveAgents();
+                }, '智能体配置'),
+            ]);
             renderMyAgents();
             renderAgentPortal();
             updateKbUploadVisibility();
             updateHeaderKbVisibility();
-            currentAgentId = null;
-            currentWorkspaceId = null;
             document.getElementById('loginModal').classList.remove('show');
-            showAgentPortal(false);
-            history.pushState({page: 'portal'}, '');
+            await restoreAuthenticatedView(targetState);
             return true;
         }
     } catch (e) { console.warn('自动登录失败', e); }
     localStorage.removeItem('authToken');
+    localStorage.removeItem('userRole');
+    clearNavigationState();
     // 自动登录失败：确保登录页可见
     document.getElementById('loginModal').classList.add('show');
+    history.replaceState({page: 'login'}, '');
     return false;
 }
 
@@ -2117,9 +2240,16 @@ function updateWelcomeContent() {
 
 function renderSubagentWelcome(welcomeEl, config) {
     const workMethod = window.SUBAO_WORK_METHOD || { phaseOne: '', phaseTwo: [] };
-    const workspaceLabelClass = config.workspaceId === 'measurement-laboratory-agent'
-        ? ' measurement-highlight'
-        : '';
+    const workspace = WORKSPACE_CONFIG[config.workspaceId] || {};
+    // 测量与实验室保留此前指定的淡棕色，其余工作区与七大智能体入口卡片同色。
+    const workspaceLabelColor = config.workspaceId === 'measurement-laboratory-agent'
+        ? '#86551d'
+        : (workspace.color || '#255289');
+    const workspaceLabelStyle = [
+        `--workspace-label-color:${workspaceLabelColor}`,
+        `--workspace-label-border:${workspaceLabelColor}52`,
+        `--workspace-label-bg:${workspaceLabelColor}14`
+    ].join(';');
     const capabilityHtml = (config.capabilities || []).map(capability => {
         const isPlanned = capability.includes('飞书');
         return `
@@ -2133,7 +2263,7 @@ function renderSubagentWelcome(welcomeEl, config) {
 
     welcomeEl.innerHTML = `
         <section class="subagent-welcome" aria-label="${escapeHtml(config.name)}介绍">
-            <div class="subagent-workspace-label${workspaceLabelClass}">${escapeHtml(config.workspaceName)}</div>
+            <div class="subagent-workspace-label" style="${workspaceLabelStyle}">${escapeHtml(config.workspaceName)}</div>
             <h2 class="subagent-welcome-name">${escapeHtml(config.name)}</h2>
             <p class="subagent-welcome-desc">${escapeHtml(config.desc)}</p>
 
@@ -2389,11 +2519,14 @@ async function switchChat(chatId) {
         agentActiveChatId[currentAgentId] = chatId;
         saveAgentActiveChatIds();
         renderMyAgents();
-        history.replaceState({
+        const navigationState = {
             page: 'chat',
             workspaceId: currentWorkspaceId,
-            agentId: currentAgentId
-        }, '');
+            agentId: currentAgentId,
+            chatId: chatId
+        };
+        history.replaceState(navigationState, '');
+        rememberNavigationState(navigationState);
     }
 
     renderChatList();
@@ -3838,12 +3971,17 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Centered mode init
     updateCenteredMode();
 
-    // [禁用自动登录] 每次访问必须手动输入用户名密码
-    localStorage.removeItem('authToken');
-
-    // [BUG FIX] Set initial history state for login page
-    // This ensures the browser back button has a proper state to return to
-    history.replaceState({page: 'login'}, '');
+    // 刷新页面时验证现有登录令牌，并恢复刷新前所在的入口页、聊天页或知识库页。
+    // 主动退出仍会清除令牌和页面状态。
+    const savedToken = localStorage.getItem('authToken');
+    if (savedToken) {
+        const loginModal = document.getElementById('loginModal');
+        if (loginModal) loginModal.classList.remove('show');
+        await tryAutoLogin(readNavigationState());
+    } else {
+        clearNavigationState();
+        history.replaceState({page: 'login'}, '');
+    }
 
     // Landing page: nav scroll & smooth scroll (宣传页已删除，跳过)
 
@@ -3902,10 +4040,12 @@ async function showKbPage() {
     if (sidebarOverlay) sidebarOverlay.style.display = 'none';
     const docsLoadPromise = updateKbPageForCurrentAgent();
     // [BUG FIX] 推入历史状态，让浏览器←按钮能回到聊天页
+    const navigationState = {page: 'kb', workspaceId: currentWorkspaceId, agentId: currentAgentId};
     if (!history.state || history.state.page !== 'kb'
             || history.state.agentId !== currentAgentId) {
-        history.pushState({page: 'kb', workspaceId: currentWorkspaceId, agentId: currentAgentId}, '');
+        history.pushState(navigationState, '');
     }
+    rememberNavigationState(navigationState);
     // Setup drag and drop
     setupKbPageDragDrop();
     await docsLoadPromise;
