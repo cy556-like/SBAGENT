@@ -388,7 +388,7 @@ LIMITED_KB_ADMIN_USERNAME = "admin"
 
 
 def is_digital_teacher_agent(agent_id: str) -> bool:
-    """识别数字郑老师共享知识库及项目开发工作区的数字陈老师知识库。"""
+    """识别数字郑老师与三个陈老师工作区的共享老师知识库。"""
     return bool(agent_id and (
         agent_id == DIGITAL_TEACHER_AGENT_ID
         or agent_id.endswith(DIGITAL_TEACHER_AGENT_SUFFIX)

@@ -38,6 +38,11 @@ const DIGITAL_TEACHER_AGENT_SUFFIX = '-digital-zheng-teacher-agent';
 const PROJECT_DEVELOPMENT_WORKSPACE_ID = 'project-development-quality-agent';
 const DIGITAL_CHEN_TEACHER_AGENT_ID = `${PROJECT_DEVELOPMENT_WORKSPACE_ID}-digital-chen-teacher-agent`;
 const DIGITAL_CHEN_TEACHER_AGENT_SUFFIX = '-digital-chen-teacher-agent';
+const CHEN_TEACHER_WORKSPACE_IDS = new Set([
+    PROJECT_DEVELOPMENT_WORKSPACE_ID,
+    'quality-system-agent',
+    'measurement-laboratory-agent'
+]);
 const FULL_KB_ADMIN_USERNAME = 'adminsubao';
 
 function isRestorableNavigationState(state) {
@@ -87,7 +92,10 @@ function isDigitalTeacherAgent(agentId) {
 }
 
 function isDigitalChenTeacherAgent(agentId) {
-    return agentId === DIGITAL_CHEN_TEACHER_AGENT_ID;
+    return Boolean(agentId && (
+        agentId === DIGITAL_CHEN_TEACHER_AGENT_ID ||
+        agentId.endsWith(DIGITAL_CHEN_TEACHER_AGENT_SUFFIX)
+    ));
 }
 
 function canUploadKnowledgeBase(agentId = currentAgentId) {
@@ -116,8 +124,8 @@ const WORKSPACE_CONFIG = window.SUBAO_WORKSPACE_CONFIG || {};
 const SUBAGENT_CONFIG_BY_ID = window.SUBAO_SUBAGENT_INDEX || {};
 const PORTAL_AGENT_IDS = Object.keys(WORKSPACE_CONFIG);
 const WORKSPACE_TEACHER_AGENT_IDS = PORTAL_AGENT_IDS.map(
-    workspaceId => workspaceId === PROJECT_DEVELOPMENT_WORKSPACE_ID
-        ? DIGITAL_CHEN_TEACHER_AGENT_ID
+    workspaceId => CHEN_TEACHER_WORKSPACE_IDS.has(workspaceId)
+        ? `${workspaceId}${DIGITAL_CHEN_TEACHER_AGENT_SUFFIX}`
         : `${workspaceId}${DIGITAL_TEACHER_AGENT_SUFFIX}`
 );
 const TEACHER_WORKSPACE_BY_ID = Object.fromEntries(
@@ -126,8 +134,8 @@ const TEACHER_WORKSPACE_BY_ID = Object.fromEntries(
 
 function getWorkspaceTeacherAgentId(workspaceId) {
     if (!workspaceId) return null;
-    return workspaceId === PROJECT_DEVELOPMENT_WORKSPACE_ID
-        ? DIGITAL_CHEN_TEACHER_AGENT_ID
+    return CHEN_TEACHER_WORKSPACE_IDS.has(workspaceId)
+        ? `${workspaceId}${DIGITAL_CHEN_TEACHER_AGENT_SUFFIX}`
         : `${workspaceId}${DIGITAL_TEACHER_AGENT_SUFFIX}`;
 }
 
@@ -540,8 +548,8 @@ function buildBuiltinAgentDefaults() {
         defaults[agentId] = {
             name: isChenTeacher ? '数字陈老师' : '数字郑老师',
             task: isChenTeacher
-                ? `你是“${workspaceName}”工作区内的陈茂林老师AI分身。你是商用车质量专家，曾担任东风汽车有限公司质量首席，从事汽车行业质量工作37年，精通商用车质量管理与项目开发质量。你必须始终自称“陈茂林老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持陈老师身份。请始终优先检索数字陈老师独立知识库后回答专业问题；不得读取数字郑老师共享知识库或其他子智能体的独立知识库，并明确区分知识库事实与通用建议。`
-                : `你是“${workspaceName}”工作区内的郑伟老师AI分身，面向质量改进与精益工作，负责专业答疑、方法辅导、案例复盘和知识传承。你必须始终自称“郑伟老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持郑伟老师AI分身的身份。请始终优先检索数字郑老师在六个工作区共享的统一知识库后回答专业问题，不得读取数字陈老师或其他子智能体的独立知识库，并明确区分知识库事实与通用建议。`,
+                ? `你是“${workspaceName}”工作区内的陈茂林老师AI分身。你是商用车质量专家，曾担任东风汽车有限公司质量首席，从事汽车行业质量工作37年，精通商用车质量管理、项目开发质量、质量体系及测量与实验室管理。你必须始终自称“陈茂林老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持陈老师身份。请始终优先检索三个陈老师工作区共享的统一知识库后回答专业问题；不得读取数字郑老师共享知识库或其他子智能体的独立知识库，并明确区分知识库事实与通用建议。`
+                : `你是“${workspaceName}”工作区内的郑伟老师AI分身，面向质量改进与精益工作，负责专业答疑、方法辅导、案例复盘和知识传承。你必须始终自称“郑伟老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称；即使用户只输入问候、标点或简短内容，也要保持郑伟老师AI分身的身份。请始终优先检索数字郑老师在四个工作区共享的统一知识库后回答专业问题，不得读取数字陈老师或其他子智能体的独立知识库，并明确区分知识库事实与通用建议。`,
             summary: isChenTeacher ? '商用车项目开发质量专业辅导' : '质量改进与精益专业辅导'
         };
     });

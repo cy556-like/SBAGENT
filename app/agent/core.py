@@ -968,6 +968,8 @@ def _cleanup_stale_graph_cache():
 
 DIGITAL_ZHENG_AGENT_ID = "digital-zheng-teacher-agent"
 DIGITAL_CHEN_AGENT_ID = "project-development-quality-agent-digital-chen-teacher-agent"
+DIGITAL_ZHENG_AGENT_SUFFIX = "-digital-zheng-teacher-agent"
+DIGITAL_CHEN_AGENT_SUFFIX = "-digital-chen-teacher-agent"
 DIGITAL_ZHENG_AGENT_TASK = """你是“郑伟老师AI分身”，面向贵阳吉利汽车的质量改进、精益管理、生产技术与制造运营提升工作，负责专业答疑、方法辅导、案例复盘和知识传承。
 
 ## 身份强制规则
@@ -976,9 +978,9 @@ DIGITAL_ZHENG_AGENT_TASK = """你是“郑伟老师AI分身”，面向贵阳吉
 - 用户询问你是谁时，直接说明你是郑伟老师AI分身，并简要介绍你在质量改进、精益管理和制造运营方面能够提供的帮助
 - 不要照搬通用企业助手的欢迎语，也不要主动罗列员工查询、GitHub、邮件、数据库等与郑老师身份无关的通用能力
 
-请始终优先检索本助手独立知识库中的资料后回答专业问题，并明确区分知识库事实与通用建议。"""
+请始终优先检索四个郑老师工作区共享的统一知识库中的资料后回答专业问题，并明确区分知识库事实与通用建议。"""
 
-DIGITAL_CHEN_AGENT_TASK = """你是“陈茂林老师AI分身”，面向速豹项目开发质量智能体工作区，负责商用车质量管理、项目开发质量、质量体系提升和审核辅导方面的专业答疑、方法辅导与案例复盘。
+DIGITAL_CHEN_AGENT_TASK = """你是“陈茂林老师AI分身”，面向速豹项目开发质量、体系、测量与实验室三个质量工作区，负责商用车质量管理、项目开发质量、质量体系提升、审核辅导、测量与实验室管理方面的专业答疑、方法辅导与案例复盘。
 
 ## 身份强制规则
 - 你必须始终自称“陈茂林老师AI分身”，绝不自称“小智”“企业智能助手”或其他名称
@@ -987,14 +989,20 @@ DIGITAL_CHEN_AGENT_TASK = """你是“陈茂林老师AI分身”，面向速豹�
 - 用户询问你是谁时，直接说明你是陈茂林老师AI分身，并简要介绍你在商用车质量管理、项目开发质量和质量体系提升方面能够提供的帮助
 - 不要声称已连接飞书或读取其他智能体资料
 
-请始终优先检索数字陈老师独立知识库中的资料后回答专业问题。不得读取数字郑老师共享知识库或其他子智能体的独立知识库，并明确区分知识库事实与通用建议。"""
+请始终优先检索三个陈老师工作区共享的统一知识库中的资料后回答专业问题。不得读取数字郑老师共享知识库或其他子智能体的独立知识库，并明确区分知识库事实与通用建议。"""
 
 
 def _resolve_agent_task(agent_task: str = None, agent_id: str = None) -> str:
     """按智能体ID补全关键角色，防止前端任务字段缺失时退回通用“小智”身份。"""
-    if agent_id == DIGITAL_CHEN_AGENT_ID:
+    if agent_id and (
+        agent_id == DIGITAL_CHEN_AGENT_ID
+        or agent_id.endswith(DIGITAL_CHEN_AGENT_SUFFIX)
+    ):
         return DIGITAL_CHEN_AGENT_TASK
-    if agent_id == DIGITAL_ZHENG_AGENT_ID:
+    if agent_id and (
+        agent_id == DIGITAL_ZHENG_AGENT_ID
+        or agent_id.endswith(DIGITAL_ZHENG_AGENT_SUFFIX)
+    ):
         return DIGITAL_ZHENG_AGENT_TASK
     return build_subagent_task(agent_id, agent_task)
 

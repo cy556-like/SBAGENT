@@ -42,6 +42,24 @@ class RegressionContracts(unittest.TestCase):
         self.assertIn("sbagent-static-v1.2.0", service_worker)
         self.assertNotIn("jlagent-static", service_worker)
 
+    def test_three_chen_workspaces_share_one_knowledge_base(self):
+        app_js = read("app/static/js/app.js")
+        storage = read("app/agent/storage.py")
+        rag = read("app/rag/document.py")
+        core = read("app/agent/core.py")
+
+        for workspace_id in (
+            "project-development-quality-agent",
+            "quality-system-agent",
+            "measurement-laboratory-agent",
+        ):
+            self.assertIn(workspace_id, app_js)
+            self.assertIn(workspace_id, storage)
+
+        self.assertIn("agent_id.endswith(_CHEN_TEACHER_WORKSPACE_AGENT_SUFFIX)", rag)
+        self.assertIn("return CHEN_TEACHER_AGENT_ID", rag)
+        self.assertIn("agent_id.endswith(DIGITAL_CHEN_AGENT_SUFFIX)", core)
+
 
 if __name__ == "__main__":
     unittest.main()

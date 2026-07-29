@@ -95,16 +95,18 @@ _STOPWORDS = {'的', '了', '是', '在', '和', '与', '有', '什么', '怎么
               'used', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from'}
 
 
-# ===== 数字郑老师共享知识库 =====
-# 七个工作区保留各自的聊天 agent_id，但知识库统一映射到此 ID。
+# ===== 数字老师共享知识库 =====
+# 各工作区保留独立聊天 agent_id；郑老师工作区映射到郑老师统一库，
+# 项目开发质量、体系、测量与实验室三个陈老师工作区映射到陈老师统一库。
 SHARED_TEACHER_KB_AGENT_ID = "digital-zheng-teacher-agent"
 _TEACHER_WORKSPACE_AGENT_SUFFIX = "-digital-zheng-teacher-agent"
 CHEN_TEACHER_AGENT_ID = "project-development-quality-agent-digital-chen-teacher-agent"
+_CHEN_TEACHER_WORKSPACE_AGENT_SUFFIX = "-digital-chen-teacher-agent"
 
 
 def normalize_knowledge_agent_id(agent_id: str = None) -> str:
-    """将六个工作区的数字郑老师映射到共享知识库；数字陈老师保持独立。"""
-    if agent_id == CHEN_TEACHER_AGENT_ID:
+    """将同一位老师在不同工作区的 agent_id 映射到对应的共享知识库。"""
+    if agent_id and agent_id.endswith(_CHEN_TEACHER_WORKSPACE_AGENT_SUFFIX):
         return CHEN_TEACHER_AGENT_ID
     if agent_id and (
         agent_id == SHARED_TEACHER_KB_AGENT_ID
