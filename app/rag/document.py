@@ -505,9 +505,18 @@ def _get_collection_name(agent_id: str = None) -> str:
     agent_id = normalize_knowledge_agent_id(agent_id)
 
     if agent_id:
-        # 用 agent_id 做 collection 名，确保合法
-        safe_id = agent_id.replace('-', '_').replace(' ', '_')
-        return f"agent_{safe_id}"
+        # Chroma collection 名称只能包含字母、数字、下划线和连字符，长度为 3-63。
+        # 工作区 + 子智能体组合后的 ID 可能很长，例如数字陈老师，直接拼接会
+        # 导致 Chroma 初始化失败并降级为关键词索引。保留可读前缀并追加稳定哈希，
+        # 既满足长度限制，也保证不同智能体的知识库不会相互混用。
+        safe_id = re.sub(r"[^A-Za-z0-9_-]+", "_", agent_id).strip("_")
+        candidate = f"agent_{safe_id}"
+        if len(candidate) <= 63:
+            return candidate
+
+        digest = hashlib.sha256(agent_id.encode("utf-8")).hexdigest()[:16]
+        prefix_length = 63 - len("agent_") - 1 - len(digest)
+        return f"agent_{safe_id[:prefix_length]}_{digest}"
     return GLOBAL_COLLECTION_NAME
 
 
@@ -671,7 +680,10 @@ def reindex_all_documents(agent_id: str = None):
         if os.path.exists(scan_dir):
             for fname in os.listdir(scan_dir):
                 ext = os.path.splitext(fname)[1].lower()
-                if ext in {'.pdf', '.txt', '.docx', '.pptx', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}:
+                if ext in {
+                    '.pdf', '.txt', '.md', '.docx', '.pptx', '.xlsx', '.xls',
+                    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp',
+                }:
                     file_path = os.path.join(scan_dir, fname)
                     if os.path.isfile(file_path):
                         document_files.add(fname)
