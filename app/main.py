@@ -205,6 +205,15 @@ def create_app() -> FastAPI:
                         "user": user,
                     }
                 )
+
+            # 前端资源允许本地缓存，但每次普通刷新必须先向服务器校验。
+            # Service Worker 自身禁止复用 HTTP 缓存，确保新版缓存策略能及时接管。
+            if path == "/static/sw.js":
+                response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+                response.headers["Pragma"] = "no-cache"
+                response.headers["Expires"] = "0"
+            elif path.startswith("/static/"):
+                response.headers["Cache-Control"] = "no-cache, must-revalidate"
             
             return response
         finally:

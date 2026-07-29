@@ -1,23 +1,24 @@
 /**
  * DocAgent Service Worker
  * PWA 离线缓存与资源管理
- * 版本: 1.1.0
+ * 版本: 1.3.0
  */
 
-const CACHE_NAME = 'sbagent-v1.2.0';
-const STATIC_CACHE = 'sbagent-static-v1.2.0';
-const DYNAMIC_CACHE = 'sbagent-dynamic-v1.2.0';
+const CACHE_VERSION = 'v1.3.0-20260729';
+const CACHE_NAME = `sbagent-${CACHE_VERSION}`;
+const STATIC_CACHE = `sbagent-static-${CACHE_VERSION}`;
+const DYNAMIC_CACHE = `sbagent-dynamic-${CACHE_VERSION}`;
 
 // 需要预缓存的静态资源
 const PRECACHE_URLS = [
     '/',
-    '/static/css/style.css?v=20260728d',
-    '/static/js/subagents-data.js?v=20260728c',
-    '/static/js/app.js?v=20260729e',
-    '/static/manifest.json',
-    '/static/icons/icon-gy.svg',
-    '/static/icons/icon-192.png',
-    '/static/icons/icon-512.png',
+    '/static/css/style.css?v=20260729-cache1',
+    '/static/js/subagents-data.js?v=20260729-cache1',
+    '/static/js/app.js?v=20260729-cache1',
+    '/static/manifest.json?v=20260729-cache1',
+    '/static/icons/icon-gy.svg?v=20260729-cache1',
+    '/static/icons/icon-192.png?v=20260729-cache1',
+    '/static/icons/icon-512.png?v=20260729-cache1',
 ];
 
 // 不缓存的路径（API请求、流式响应等）
@@ -49,7 +50,11 @@ self.addEventListener('activate', (event) => {
         caches.keys().then((cacheNames) => {
             return Promise.all(
                 cacheNames
-                    .filter((name) => name !== STATIC_CACHE && name !== DYNAMIC_CACHE)
+                    .filter((name) =>
+                        name.startsWith('sbagent-') &&
+                        name !== STATIC_CACHE &&
+                        name !== DYNAMIC_CACHE
+                    )
                     .map((name) => {
                         console.log('[SW] Removing old cache:', name);
                         return caches.delete(name);
@@ -67,6 +72,7 @@ self.addEventListener('fetch', (event) => {
 
     // 跳过非同源请求
     if (url.origin !== location.origin) return;
+    if (request.method !== 'GET') return;
 
     // 跳过不需要缓存的请求
     if (NO_CACHE_PATTERNS.some(pattern => pattern.test(url.pathname))) {
@@ -79,9 +85,11 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // 对于静态资源，使用缓存优先策略
+    // 所有本地静态资源均使用网络优先：
+    // 普通刷新会重新校验 JS、CSS、图片、头像、Logo 和字体，
+    // 网络不可用时才读取上一次成功缓存的版本。
     if (isStaticAsset(url.pathname)) {
-        event.respondWith(cacheFirst(request));
+        event.respondWith(networkFirst(request));
         return;
     }
 
@@ -89,33 +97,15 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(networkFirst(request));
 });
 
-// 缓存优先策略（适合静态资源：CSS, JS, 图片等）
-async function cacheFirst(request) {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-
-    try {
-        const response = await fetch(request);
-        if (response.ok) {
-            const cache = await caches.open(STATIC_CACHE);
-            cache.put(request, response.clone());
-        }
-        return response;
-    } catch (err) {
-        // 网络失败，返回离线页面
-        return new Response('离线状态，请检查网络连接', {
-            status: 503,
-            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
-        });
-    }
-}
-
 // 网络优先策略（适合频繁更新的内容）
 async function networkFirst(request) {
     try {
-        const response = await fetch(request);
+        // no-cache 表示允许浏览器使用 304，但必须先向服务器确认资源是否变化。
+        const response = await fetch(request, { cache: 'no-cache' });
         if (response.ok) {
-            const cache = await caches.open(DYNAMIC_CACHE);
+            const cache = await caches.open(
+                isStaticAsset(new URL(request.url).pathname) ? STATIC_CACHE : DYNAMIC_CACHE
+            );
             cache.put(request, response.clone());
         }
         return response;
@@ -137,7 +127,10 @@ async function networkFirst(request) {
 
 // 判断是否为静态资源
 function isStaticAsset(pathname) {
-    return /\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/i.test(pathname);
+    return (
+        pathname === '/static/manifest.json' ||
+        /\.(css|js|png|jpg|jpeg|gif|webp|avif|svg|ico|woff|woff2|ttf|eot)$/i.test(pathname)
+    );
 }
 
 // 监听消息 - 允许前端触发缓存更新

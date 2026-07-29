@@ -38,9 +38,16 @@ class RegressionContracts(unittest.TestCase):
     def test_pwa_brand_and_cache_are_sbagent(self):
         manifest = read("app/static/manifest.json")
         service_worker = read("app/static/sw.js")
+        index = read("app/static/index.html")
+        main = read("app/main.py")
         self.assertIn("速豹 AI智能体平台", manifest)
-        self.assertIn("sbagent-static-v1.2.0", service_worker)
+        self.assertIn("sbagent-static-${CACHE_VERSION}", service_worker)
         self.assertNotIn("jlagent-static", service_worker)
+        self.assertIn("fetch(request, { cache: 'no-cache' })", service_worker)
+        self.assertIn("event.respondWith(networkFirst(request))", service_worker)
+        self.assertIn("controllerchange", index)
+        self.assertIn("updateViaCache: 'none'", index)
+        self.assertIn('path == "/static/sw.js"', main)
 
     def test_three_chen_workspaces_share_one_knowledge_base(self):
         app_js = read("app/static/js/app.js")
