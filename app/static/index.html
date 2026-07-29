@@ -474,7 +474,7 @@
                 </div>
 
 
-                <input type="file" id="kbPageFileInput" accept=".pdf,.txt,.docx,.xlsx,.xls,.doc,.png,.jpg,.jpeg,.gif,.bmp,.webp" onchange="onKbPageFileSelected(event)" multiple style="display:none">
+                <input type="file" id="kbPageFileInput" accept=".pdf,.txt,.docx,.pptx,.xlsx,.xls,.doc,.png,.jpg,.jpeg,.gif,.bmp,.webp" onchange="onKbPageFileSelected(event)" multiple style="display:none">
 
 
                 <div class="kb-upload-progress" id="kbPageProgress" style="display:none;">
@@ -594,7 +594,7 @@
 <div class="modal-overlay" id="docsModal" role="dialog" aria-label="知识库管理" aria-modal="true">
 
 
-    <div class="modal"><h3>知识库管理</h3><div class="upload-section" id="uploadZone" onclick="document.getElementById('kbFileInput').click()" role="button" aria-label="上传文档"><div class="upload-icon">📤</div><div class="upload-text">点击或拖拽文件到此处 <strong>上传到知识库</strong></div><div class="upload-hint">支持 PDF、TXT、DOCX、图片(PNG/JPG等) 格式</div></div><input type="file" id="kbFileInput" accept=".pdf,.txt,.docx,.png,.jpg,.jpeg,.gif,.bmp,.webp" onchange="onKbFileSelected(event)" multiple aria-hidden="true"><div class="upload-progress" id="uploadProgress" role="progressbar"><div class="progress-file" id="progressFileName">正在上传...</div><div class="progress-bar-bg"><div class="progress-bar-fill" id="progressBarFill"></div></div><div class="progress-status" id="progressStatus">上传中...</div></div><div class="divider">已索引文档</div><div class="doc-list" id="docList" role="list"><div class="doc-empty">加载中...</div></div><button class="btn btn-primary close-btn" onclick="closeDocs()" aria-label="关闭">关闭</button></div>
+    <div class="modal"><h3>知识库管理</h3><div class="upload-section" id="uploadZone" onclick="document.getElementById('kbFileInput').click()" role="button" aria-label="上传文档"><div class="upload-icon">📤</div><div class="upload-text">点击或拖拽文件到此处 <strong>上传到知识库</strong></div><div class="upload-hint">支持 PDF、TXT、DOCX、PPTX、表格和图片格式</div></div><input type="file" id="kbFileInput" accept=".pdf,.txt,.docx,.pptx,.xlsx,.xls,.png,.jpg,.jpeg,.gif,.bmp,.webp" onchange="onKbFileSelected(event)" multiple aria-hidden="true"><div class="upload-progress" id="uploadProgress" role="progressbar"><div class="progress-file" id="progressFileName">正在上传...</div><div class="progress-bar-bg"><div class="progress-bar-fill" id="progressBarFill"></div></div><div class="progress-status" id="progressStatus">上传中...</div></div><div class="divider">已索引文档</div><div class="doc-list" id="docList" role="list"><div class="doc-empty">加载中...</div></div><button class="btn btn-primary close-btn" onclick="closeDocs()" aria-label="关闭">关闭</button></div>
 
 
 </div>
@@ -733,7 +733,7 @@ function toggleFaq(el) {
 
 
     <script src="/static/js/subagents-data.js?v=20260728c"></script>
-<script src="/static/js/app.js?v=20260729b"></script>
+<script src="/static/js/app.js?v=20260729c"></script>
 
 
 </body>

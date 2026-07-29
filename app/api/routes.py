@@ -961,7 +961,7 @@ async def chat_with_file_stream(
 
     image_exts = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
-    doc_exts = {".pdf", ".txt", ".docx", ".xlsx", ".xls"}
+    doc_exts = {".pdf", ".txt", ".docx", ".pptx", ".xlsx", ".xls"}
 
     code_exts = {".py", ".js", ".html", ".css", ".json", ".md", ".csv", ".xlsx", ".xls", ".doc", ".ppt", ".pptx"}
 
@@ -1201,7 +1201,7 @@ async def upload_document(file: UploadFile = File(...), agent_id: str = Form(Non
 
     上传文档并自动索引到向量数据库（需登录认证）
 
-    支持 PDF、TXT、MD、DOCX、XLSX、XLS、图片(PNG/JPG/JPEG/GIF/BMP/WebP) 格式
+    支持 PDF、TXT、MD、DOCX、PPTX、XLSX、XLS、图片(PNG/JPG/JPEG/GIF/BMP/WebP) 格式
 
     必须指定 agent_id（普通聊天模式无知识库，不支持上传到知识库）
 
@@ -1225,7 +1225,7 @@ async def upload_document(file: UploadFile = File(...), agent_id: str = Form(Non
 
     # 检查文件格式
 
-    allowed_ext = {".pdf", ".txt", ".md", ".docx", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
+    allowed_ext = {".pdf", ".txt", ".md", ".docx", ".pptx", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
     ext = os.path.splitext(file.filename)[1].lower()
 
@@ -1689,6 +1689,7 @@ async def download_document(filename: str, agent_id: str = Query(None, descripti
     mime_map = {
 
         ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 
         ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 
@@ -2055,6 +2056,7 @@ async def download_export_document(filename: str):
     mime_map = {
 
         ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 
         ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 

@@ -658,7 +658,7 @@ def reindex_all_documents(agent_id: str = None):
         if os.path.exists(scan_dir):
             for fname in os.listdir(scan_dir):
                 ext = os.path.splitext(fname)[1].lower()
-                if ext in {'.pdf', '.txt', '.docx', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}:
+                if ext in {'.pdf', '.txt', '.docx', '.pptx', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}:
                     file_path = os.path.join(scan_dir, fname)
                     if os.path.isfile(file_path):
                         document_files.add(fname)
@@ -1301,10 +1301,175 @@ def _load_image_as_document(file_path: str) -> list:
     return [Document(page_content=extracted_text, metadata={"source": file_path, "file_type": "image", "image_file": filename})]
 
 
+def _load_pptx_with_structure(file_path: str) -> list:
+    """按幻灯片提取 PPTX 的标题、文本、表格、图表数据和演讲者备注。
+
+    每页幻灯片返回一个独立 Document，并保留 slide_number/slide_title 元数据，
+    便于后续按页切片、检索和引用。纯图片中的文字不在此处臆测；如需识别，
+    应先对图片执行 OCR/VLM 后再入库。
+    """
+    try:
+        from pptx import Presentation
+        from langchain_core.documents import Document
+    except ImportError as exc:
+        raise ImportError("解析 PPTX 需要安装 python-pptx，请执行 pip install python-pptx") from exc
+
+    def clean_text(value) -> str:
+        return " ".join(str(value or "").replace("\x00", " ").split())
+
+    def markdown_cell(value) -> str:
+        return clean_text(value).replace("|", "\\|")
+
+    def table_to_markdown(table) -> str:
+        rows = [[markdown_cell(cell.text) for cell in row.cells] for row in table.rows]
+        if not rows:
+            return ""
+        width = max(len(row) for row in rows)
+        rows = [row + [""] * (width - len(row)) for row in rows]
+        header = rows[0]
+        lines = [
+            "| " + " | ".join(header) + " |",
+            "| " + " | ".join(["---"] * width) + " |",
+        ]
+        lines.extend("| " + " | ".join(row) + " |" for row in rows[1:])
+        return "\n".join(lines)
+
+    def chart_to_markdown(chart) -> str:
+        blocks = []
+        try:
+            if chart.has_title:
+                title = clean_text(chart.chart_title.text_frame.text)
+                if title:
+                    blocks.append(f"图表标题：{title}")
+        except Exception:
+            pass
+
+        try:
+            categories = [clean_text(getattr(item, "label", item)) for item in chart.plots[0].categories]
+        except Exception:
+            categories = []
+        try:
+            series_items = list(chart.series)
+        except Exception:
+            series_items = []
+        if series_items:
+            width = max([len(categories)] + [len(list(series.values)) for series in series_items])
+            labels = categories + [f"数据点{i + 1}" for i in range(len(categories), width)]
+            lines = ["| 系列 | " + " | ".join(labels) + " |", "| --- | " + " | ".join(["---"] * width) + " |"]
+            for series in series_items:
+                values = ["" if value is None else str(value) for value in series.values]
+                values += [""] * (width - len(values))
+                lines.append("| " + markdown_cell(series.name) + " | " + " | ".join(values) + " |")
+            blocks.append("\n".join(lines))
+        return "\n".join(blocks)
+
+    def shape_blocks(shape) -> list[str]:
+        blocks = []
+        if getattr(shape, "has_text_frame", False):
+            paragraphs = [clean_text(paragraph.text) for paragraph in shape.text_frame.paragraphs]
+            text = "\n".join(item for item in paragraphs if item)
+            if text:
+                blocks.append(text)
+        if getattr(shape, "has_table", False):
+            table_text = table_to_markdown(shape.table)
+            if table_text:
+                blocks.append(table_text)
+        if getattr(shape, "has_chart", False):
+            chart_text = chart_to_markdown(shape.chart)
+            if chart_text:
+                blocks.append(chart_text)
+        if hasattr(shape, "shapes"):
+            for child in sorted(shape.shapes, key=lambda item: (int(getattr(item, "top", 0) or 0), int(getattr(item, "left", 0) or 0))):
+                blocks.extend(shape_blocks(child))
+        return blocks
+
+    presentation = Presentation(file_path)
+    documents = []
+    for slide_number, slide in enumerate(presentation.slides, start=1):
+        title = ""
+        try:
+            if slide.shapes.title is not None:
+                title = clean_text(slide.shapes.title.text)
+        except Exception:
+            pass
+
+        blocks = []
+        ordered_shapes = sorted(slide.shapes, key=lambda item: (int(getattr(item, "top", 0) or 0), int(getattr(item, "left", 0) or 0)))
+        for shape in ordered_shapes:
+            blocks.extend(shape_blocks(shape))
+
+        # 去除标题形状造成的重复文本，同时保留原始顺序。
+        unique_blocks = []
+        seen = set()
+        for block in blocks:
+            normalized = block.strip()
+            if not normalized or normalized == title or normalized in seen:
+                continue
+            seen.add(normalized)
+            unique_blocks.append(normalized)
+
+        notes = ""
+        try:
+            if getattr(slide, "has_notes_slide", False):
+                notes = clean_text(slide.notes_slide.notes_text_frame.text)
+        except Exception as exc:
+            logger.debug(f"PPTX 第{slide_number}页备注提取失败: {exc}")
+
+        slide_label = f"第{slide_number}页"
+        heading = f"# {slide_label}" + (f"：{title}" if title else "")
+        content_parts = [heading]
+        content_parts.extend(unique_blocks)
+        if notes:
+            content_parts.extend(["## 演讲者备注", notes])
+        page_content = "\n\n".join(part for part in content_parts if part).strip()
+        if len(page_content) <= len(heading):
+            continue
+
+        documents.append(Document(
+            page_content=page_content,
+            metadata={
+                "source": file_path,
+                "file_type": "pptx",
+                "slide_number": slide_number,
+                "slide_title": title,
+            },
+        ))
+
+    if not documents:
+        raise ValueError("PPTX 中未提取到可索引的文字、表格、图表数据或演讲者备注")
+    logger.info(f"PPTX解析完成: {os.path.basename(file_path)}, 共 {len(documents)} 页包含可索引内容")
+    return documents
+
+
+def _split_pptx_by_slides(docs: list, chunk_size: int = 800, chunk_overlap: int = 200) -> list:
+    """保持幻灯片边界切片；长页面再细分，并在每个分块重复页码和标题。"""
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=["\n\n", "\n", "。", "；", "，", " ", ""],
+    )
+    chunks = []
+    for doc in docs:
+        slide_number = doc.metadata.get("slide_number", "")
+        slide_title = doc.metadata.get("slide_title", "")
+        label = f"[PPTX 第{slide_number}页" + (f"：{slide_title}" if slide_title else "") + "]"
+        page_chunks = splitter.split_documents([doc])
+        for chunk in page_chunks:
+            if not chunk.page_content.startswith(label):
+                chunk.page_content = label + "\n" + chunk.page_content
+            chunk.metadata.update(doc.metadata)
+            chunk.metadata["chunk_type"] = "pptx_slide"
+            chunk.metadata["section_path"] = f"第{slide_number}页" + (f" > {slide_title}" if slide_title else "")
+            chunk.metadata["chunk_index"] = len(chunks)
+            chunks.append(chunk)
+    logger.info(f"PPTX按页切片完成: {len(docs)} 页 -> {len(chunks)} 个分块")
+    return chunks
+
+
 def load_document(file_path: str) -> list:
     """
     根据文件类型加载文档
-    支持：PDF、TXT、MD、DOCX、XLSX、XLS、图片(PNG/JPG/JPEG/GIF/BMP/WebP)
+    支持：PDF、TXT、MD、DOCX、PPTX、XLSX、XLS、图片(PNG/JPG/JPEG/GIF/BMP/WebP)
 
     DOCX 文件使用 python-docx 加载，保留表格结构为 Markdown 格式，
     解决 Docx2txtLoader 展平表格导致结构丢失的问题。
@@ -1324,12 +1489,14 @@ def load_document(file_path: str) -> list:
         return loader.load()
     elif ext == ".docx":
         return _load_docx_with_tables(file_path)
+    elif ext == ".pptx":
+        return _load_pptx_with_structure(file_path)
     elif ext in (".xlsx", ".xls"):
         return load_xlsx_document(file_path)
     elif ext in (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"):
         return _load_image_as_document(file_path)
     else:
-        raise ValueError(f"不支持的文件格式: {ext}，仅支持 PDF/TXT/MD/DOCX/XLSX/XLS/图片")
+        raise ValueError(f"不支持的文件格式: {ext}，仅支持 PDF/TXT/MD/DOCX/PPTX/XLSX/XLS/图片")
 
 
 def _split_markdown_by_headers(docs: list, chunk_size: int = 800, chunk_overlap: int = 200) -> list:
@@ -1391,6 +1558,10 @@ def split_documents(docs: list, chunk_size: int = 800, chunk_overlap: int = 200,
     - 碎片合并：相邻短 chunk 自动合并，提升语义完整性
     - 结构标记：每个 chunk 标记类型（heading/table/list/paragraph）
     """
+    # ===== PPTX 文件：保持幻灯片边界并按页切片 =====
+    if filename and filename.lower().endswith('.pptx'):
+        return _split_pptx_by_slides(docs, chunk_size, chunk_overlap)
+
     # ===== Markdown 文件：使用标题层级切片 =====
     is_markdown = filename and filename.lower().endswith('.md')
 
@@ -2575,7 +2746,7 @@ def _search_disk_files(query: str, top_k: int = 3, agent_id: str = None) -> list
     scored = []
     for fname in os.listdir(scan_dir):
         ext = os.path.splitext(fname)[1].lower()
-        if ext not in {'.txt', '.docx', '.pdf'}:
+        if ext not in {'.txt', '.docx', '.pdf', '.pptx'}:
             continue
         file_path = os.path.join(scan_dir, fname)
         if not os.path.isfile(file_path):
@@ -2711,7 +2882,7 @@ def list_indexed_documents(agent_id: str = None) -> list[str]:
     if os.path.exists(scan_dir):
         for fname in os.listdir(scan_dir):
             ext = os.path.splitext(fname)[1].lower()
-            if ext in {'.pdf', '.txt', '.docx', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}:
+            if ext in {'.pdf', '.txt', '.docx', '.pptx', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}:
                 file_path = os.path.join(scan_dir, fname)
                 if os.path.isfile(file_path):
                     sources.add(fname)

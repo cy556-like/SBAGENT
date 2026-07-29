@@ -3203,6 +3203,7 @@ async function loadDocList() {
                 let icon = '📄';
                 if (doc.endsWith('.pdf')) icon = '📕';
                 else if (doc.endsWith('.docx')) icon = '📘';
+                else if (doc.endsWith('.pptx')) icon = '📙';
                 else if (doc.endsWith('.xlsx') || doc.endsWith('.xls')) icon = '📊';
                 else if (doc.endsWith('.txt')) icon = '📝';
                 const safeName = escapeHtml(doc);
