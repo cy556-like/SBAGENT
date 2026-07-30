@@ -617,6 +617,8 @@ def get_document_content_tool(filename: str) -> str:
         return f"【获取失败】文档 \"{filename}\" 在服务器上未找到。\n提示：请确认文件名是否正确（需包含扩展名），可通过 list_documents_tool 查看当前文档列表。"
     if result["status"] == "empty":
         return f"【获取失败】文档 \"{filename}\" 内容为空。"
+    if result["status"] == "processing":
+        return f"【文档处理中】{result['message']}"
     if result["status"] == "error":
         return f"【获取失败】{result['message']}"
     

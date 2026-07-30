@@ -50,6 +50,10 @@ logger = logging.getLogger(__name__)
 
 _PDF_TEXT_CACHE_VERSION = 1
 _PDF_MIN_USABLE_CHARS = 8
+# 扫描PDF通常已经内嵌约1200px宽的页面图。继续放大到2倍只会增加OCR
+# 像素量，并不会产生新的细节。1.5倍对中文正文仍清晰，像素量约为旧配置的56%。
+_PDF_OCR_MAX_SCALE = 1.5
+_PDF_OCR_CHECKPOINT_PAGES = 10
 _pdf_ocr_engine = None
 _pdf_ocr_engine_lock = threading.Lock()
 
@@ -1504,6 +1508,11 @@ def _pdf_text_cache_path(file_path: str) -> str:
     return f"{file_path}.sbagent-text.json"
 
 
+def _pdf_partial_cache_path(file_path: str) -> str:
+    """PDF OCR断点缓存；进程重启后可从已完成页面继续。"""
+    return f"{file_path}.sbagent-text.partial.json"
+
+
 def _is_usable_pdf_text(text: str) -> bool:
     """过滤只有页码、空白或大量乱码的伪文本层。"""
     text = str(text or "").replace("\x00", " ").strip()
@@ -1596,6 +1605,87 @@ def _write_pdf_text_cache(file_path: str, documents: list) -> None:
             pass
 
 
+def _read_pdf_partial_cache(file_path: str) -> list:
+    """读取OCR断点缓存；格式与最终缓存一致，但允许只包含部分页面。"""
+    from langchain_core.documents import Document
+
+    cache_path = _pdf_partial_cache_path(file_path)
+    if not os.path.exists(cache_path):
+        return []
+    try:
+        stat = os.stat(file_path)
+        with open(cache_path, "r", encoding="utf-8") as cache_file:
+            payload = json.load(cache_file)
+        if (
+            payload.get("version") != _PDF_TEXT_CACHE_VERSION
+            or payload.get("source_size") != stat.st_size
+            or payload.get("source_mtime_ns") != stat.st_mtime_ns
+        ):
+            return []
+        documents = []
+        for item in payload.get("pages", []):
+            content = str(item.get("content") or "").strip()
+            if not content:
+                continue
+            page_index = int(item.get("page", len(documents)))
+            documents.append(Document(
+                page_content=content,
+                metadata={
+                    "source": file_path,
+                    "file_type": "pdf",
+                    "page": page_index,
+                    "page_number": page_index + 1,
+                    "pdf_extraction_method": item.get("method", "partial-cache"),
+                },
+            ))
+        if documents:
+            logger.info(
+                "PDF OCR断点缓存命中: %s，已完成 %s 页",
+                os.path.basename(file_path),
+                len(documents),
+            )
+        return documents
+    except Exception as exc:
+        logger.warning("PDF OCR断点缓存读取失败，将重新解析: %s", exc)
+        return []
+
+
+def _write_pdf_partial_cache(file_path: str, documents: list) -> None:
+    """每若干页原子保存一次OCR进度，避免长文档中断后全部重做。"""
+    cache_path = _pdf_partial_cache_path(file_path)
+    temp_path = f"{cache_path}.{os.getpid()}.{threading.get_ident()}.tmp"
+    try:
+        stat = os.stat(file_path)
+        pages = []
+        for index, document in enumerate(documents):
+            content = str(document.page_content or "").strip()
+            if not content:
+                continue
+            page_index = int(document.metadata.get("page", index))
+            pages.append({
+                "page": page_index,
+                "page_number": page_index + 1,
+                "method": document.metadata.get("pdf_extraction_method", "partial"),
+                "content": content,
+            })
+        payload = {
+            "version": _PDF_TEXT_CACHE_VERSION,
+            "source_size": stat.st_size,
+            "source_mtime_ns": stat.st_mtime_ns,
+            "pages": pages,
+        }
+        with open(temp_path, "w", encoding="utf-8") as cache_file:
+            json.dump(payload, cache_file, ensure_ascii=False)
+        os.replace(temp_path, cache_path)
+    except Exception as exc:
+        logger.warning("PDF OCR断点缓存写入失败（不影响本次索引）: %s", exc)
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass
+
+
 def _get_pdf_ocr_engine():
     """延迟加载本地OCR模型；同一worker只初始化一次。"""
     global _pdf_ocr_engine
@@ -1622,8 +1712,9 @@ def _ocr_pdf_page(page, page_number: int) -> str:
 
     width, height = page.get_size()
     longest_edge = max(float(width), float(height), 1.0)
-    # 约144 DPI，同时限制超大工程图的最长边，避免8GB服务器内存突增。
-    scale = max(1.0, min(2.0, 2600.0 / longest_edge))
+    # 扫描页本身已有固定分辨率，过度放大不会增加信息，只会拖慢CPU OCR。
+    # 最长边控制在约1260px（A4横页842pt * 1.5），兼顾中文识别率和速度。
+    scale = max(1.0, min(_PDF_OCR_MAX_SCALE, 1600.0 / longest_edge))
     bitmap = None
     image = None
     try:
@@ -1664,6 +1755,12 @@ def _load_pdf_with_fallback(file_path: str) -> list:
     cached = _read_pdf_text_cache(file_path)
     if cached:
         return cached
+
+    partial_documents = _read_pdf_partial_cache(file_path)
+    partial_by_page = {
+        int(document.metadata.get("page", index)): document
+        for index, document in enumerate(partial_documents)
+    }
 
     native_by_page = {}
     native_page_count = 0
@@ -1716,11 +1813,20 @@ def _load_pdf_with_fallback(file_path: str) -> list:
         pdf = pdfium.PdfDocument(file_path)
         for page_index in range(len(pdf)):
             page = pdf[page_index]
-            content = native_by_page.get(page_index, "")
-            method = "pypdf"
+            partial_document = partial_by_page.get(page_index)
+            content = (
+                str(partial_document.page_content or "").strip()
+                if partial_document is not None
+                else native_by_page.get(page_index, "")
+            )
+            method = (
+                partial_document.metadata.get("pdf_extraction_method", "partial-cache")
+                if partial_document is not None
+                else "pypdf"
+            )
             try:
                 text_page = None
-                if not _is_usable_pdf_text(content):
+                if partial_document is None and not _is_usable_pdf_text(content):
                     try:
                         text_page = page.get_textpage()
                         pdfium_text = str(text_page.get_text_bounded() or "").replace("\x00", " ").strip()
@@ -1731,7 +1837,7 @@ def _load_pdf_with_fallback(file_path: str) -> list:
                         if text_page is not None:
                             text_page.close()
 
-                if not _is_usable_pdf_text(content):
+                if partial_document is None and not _is_usable_pdf_text(content):
                     content = _ocr_pdf_page(page, page_index + 1)
                     method = "rapidocr"
                     if content.strip():
@@ -1750,6 +1856,18 @@ def _load_pdf_with_fallback(file_path: str) -> list:
                     ))
                 else:
                     failed_pages.append(page_index + 1)
+
+                if (
+                    (page_index + 1) % _PDF_OCR_CHECKPOINT_PAGES == 0
+                    or page_index + 1 == len(pdf)
+                ):
+                    _write_pdf_partial_cache(file_path, documents)
+                    logger.info(
+                        "PDF OCR进度: %s，%s/%s页",
+                        os.path.basename(file_path),
+                        page_index + 1,
+                        len(pdf),
+                    )
             finally:
                 page.close()
     finally:
@@ -1762,6 +1880,12 @@ def _load_pdf_with_fallback(file_path: str) -> list:
         )
 
     _write_pdf_text_cache(file_path, documents)
+    try:
+        partial_cache_path = _pdf_partial_cache_path(file_path)
+        if os.path.exists(partial_cache_path):
+            os.remove(partial_cache_path)
+    except OSError:
+        pass
     logger.info(
         "PDF解析完成: %s，可用页=%s，OCR页=%s，空白/失败页=%s",
         os.path.basename(file_path),
@@ -3058,7 +3182,21 @@ def _search_disk_files(query: str, top_k: int = 3, agent_id: str = None) -> list
             continue
 
         try:
-            docs = load_document(file_path)
+            # 交互式问答严禁现场OCR整本扫描PDF。OCR只能发生在上传/索引阶段；
+            # 查询阶段只读已完成的持久化文字缓存，否则一个问题可能阻塞数分钟，
+            # 多个搜索工具调用还会在不同worker里重复识别同一本书。
+            if ext == '.pdf':
+                docs = _read_pdf_text_cache(file_path)
+                if not docs:
+                    docs = _read_pdf_partial_cache(file_path)
+                if not docs:
+                    logger.info(
+                        "跳过尚未完成OCR/索引的PDF磁盘兜底搜索: %s",
+                        fname,
+                    )
+                    continue
+            else:
+                docs = load_document(file_path)
             for doc in docs:
                 content = doc.page_content
                 content_lower = content.lower()
@@ -3112,7 +3250,23 @@ def get_document_content(filename: str, agent_id: str = None) -> dict:
         }
 
     try:
-        docs = load_document(file_path)
+        # 文档工具运行在聊天请求内，不能在此处启动整本扫描PDF的OCR。
+        # PDF只读取上传/索引阶段生成的缓存；缓存未完成时立即返回状态，
+        # 避免前端长时间卡在“读取文档内容”。
+        if os.path.splitext(file_path)[1].lower() == ".pdf":
+            docs = _read_pdf_text_cache(file_path)
+            if not docs:
+                return {
+                    "filename": filename,
+                    "status": "processing",
+                    "content": "",
+                    "message": (
+                        f"文档 {filename} 是扫描版PDF，后台OCR/索引尚未完成。"
+                        "请等待知识库索引完成后再查询；聊天请求不会重复启动整本OCR。"
+                    ),
+                }
+        else:
+            docs = load_document(file_path)
         full_content = "\n".join([doc.page_content for doc in docs])
 
         if not full_content.strip():

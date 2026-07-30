@@ -105,6 +105,14 @@ class RegressionContracts(unittest.TestCase):
         self.assertIn("onnxruntime", requirements)
         self.assertIn("numpy==1.26.4", requirements)
         self.assertIn("opencv-python==4.11.0.86", requirements)
+        self.assertIn("_PDF_OCR_MAX_SCALE = 1.5", rag)
+        self.assertIn("_PDF_OCR_CHECKPOINT_PAGES = 10", rag)
+        self.assertIn("def _read_pdf_partial_cache", rag)
+        self.assertIn("def _write_pdf_partial_cache", rag)
+        self.assertIn("PDF OCR进度:", rag)
+        self.assertIn("跳过尚未完成OCR/索引的PDF磁盘兜底搜索", rag)
+        self.assertIn('"status": "processing"', rag)
+        self.assertIn('docs = _read_pdf_text_cache(file_path)', rag)
 
     def test_large_pdf_questions_do_not_send_full_book_to_model(self):
         tools = read("app/agent/tools.py")
