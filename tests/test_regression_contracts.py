@@ -30,6 +30,14 @@ class RegressionContracts(unittest.TestCase):
         self.assertIn("async def search_api(req: SearchRequest", routes)
         self.assertIn("async def download_document(filename: str", routes)
         self.assertGreaterEqual(routes.count("username: str = Depends(require_auth)"), 10)
+        self.assertIn('@router.post("/documents/ocr-word-export"', routes)
+        self.assertIn("该扫描PDF仍在OCR/索引中", routes)
+
+    def test_pdf_ocr_word_download_is_available_in_knowledge_base_ui(self):
+        app_js = read("app/static/js/app.js")
+        self.assertIn("doc-ocr-word-btn", app_js)
+        self.assertIn("/api/v1/documents/ocr-word-export", app_js)
+        self.assertIn("downloadPdfOcrWord", app_js)
 
     def test_frontend_has_race_guards_and_safe_markdown(self):
         app_js = read("app/static/js/app.js")

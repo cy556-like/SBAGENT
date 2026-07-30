@@ -156,7 +156,7 @@ async def _sse_stream_wrapper(
     if cancelled_by_client:
         logger.info(f"SSE流完成（客户端主动断开）: session={session_id}")
 
-from app.rag.document import index_document, search_documents, list_indexed_documents, delete_document, update_document, delete_agent_collection, list_all_collections, load_document, export_document_as_docx, reindex_all_documents, get_indexing_mode, _get_export_dir, cleanup_export_files, _load_keyword_index, get_vector_store, normalize_knowledge_agent_id
+from app.rag.document import index_document, search_documents, list_indexed_documents, delete_document, update_document, delete_agent_collection, list_all_collections, load_document, export_document_as_docx, get_document_content, reindex_all_documents, get_indexing_mode, _get_export_dir, cleanup_export_files, _load_keyword_index, get_vector_store, normalize_knowledge_agent_id
 
 from app.auth.user_manager import login_user, register_user, get_user_role, is_admin, list_all_users, delete_user, update_user_role, reset_user_password
 
@@ -670,6 +670,13 @@ class ExportDocumentRequest(BaseModel):
     filename: str = ""  # 输出文件名（含扩展名），为空则自动生成
 
     title: str = ""  # 文档标题，为空则使用filename
+
+
+class OcrWordExportRequest(BaseModel):
+    """将知识库中已完成OCR的扫描PDF导出为可下载Word。"""
+
+    filename: str
+    agent_id: str | None = None
 
 
 
@@ -1916,6 +1923,44 @@ async def export_document_api(req: ExportDocumentRequest):
 
 
 
+
+
+@router.post("/documents/ocr-word-export", summary="将已OCR的PDF导出为文字版Word")
+async def export_ocr_pdf_to_word(
+    req: OcrWordExportRequest,
+    username: str = Depends(require_auth),
+):
+    """只读取已完成的OCR缓存，绝不在下载请求中重新OCR整本PDF。"""
+    filename = os.path.basename(unquote(req.filename or ""))
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="仅支持将PDF导出为文字版Word")
+
+    agent_id = normalize_knowledge_agent_id(req.agent_id)
+    result = get_document_content(filename, agent_id=agent_id)
+    if result.get("status") == "processing":
+        raise HTTPException(
+            status_code=409,
+            detail="该扫描PDF仍在OCR/索引中。完成后即可下载文字版Word，不会重新识别。",
+        )
+    if result.get("status") != "success":
+        raise HTTPException(status_code=404, detail=result.get("message", "未找到可导出的OCR文字"))
+
+    word_filename = f"{os.path.splitext(filename)[0]}-文字版.docx"
+    export_result = export_document_as_docx(
+        result["content"],
+        word_filename,
+        title=f"{os.path.splitext(filename)[0]} - OCR文字版",
+    )
+    if export_result.get("status") != "success":
+        raise HTTPException(status_code=500, detail=export_result.get("message", "Word导出失败"))
+
+    actual_filename = export_result.get("filename", word_filename)
+    return {
+        "status": "success",
+        "filename": actual_filename,
+        "download_url": f"/api/v1/documents/export-download/{actual_filename}",
+        "message": "OCR文字版Word已生成，可直接下载到本机。",
+    }
 
 
 class ExportXlsxRequest(BaseModel):
