@@ -98,6 +98,8 @@ class RegressionContracts(unittest.TestCase):
         self.assertIn("pypdfium2", requirements)
         self.assertIn("rapidocr", requirements)
         self.assertIn("onnxruntime", requirements)
+        self.assertIn("numpy==1.26.4", requirements)
+        self.assertIn("opencv-python==4.11.0.86", requirements)
 
 
 if __name__ == "__main__":
