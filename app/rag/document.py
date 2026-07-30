@@ -1717,11 +1717,20 @@ def _ocr_pdf_page(page, page_number: int) -> str:
     scale = max(1.0, min(_PDF_OCR_MAX_SCALE, 1600.0 / longest_edge))
     bitmap = None
     image = None
+    started_at = time.perf_counter()
     try:
+        logger.info("PDF OCR单页开始: 第%s页", page_number)
         bitmap = page.render(scale=scale)
         image = bitmap.to_pil().convert("RGB")
         image_array = np.asarray(image)[:, :, ::-1].copy()
-        result = _get_pdf_ocr_engine()(image_array)
+        # PDFium已应用页面旋转信息，输入文字方向是正向的；关闭方向分类可减少
+        # 每个文本框的一次模型推理。检测和文字识别仍保持开启。
+        result = _get_pdf_ocr_engine()(
+            image_array,
+            use_det=True,
+            use_cls=False,
+            use_rec=True,
+        )
         texts = list(getattr(result, "txts", None) or [])
         scores = list(getattr(result, "scores", None) or [])
         accepted = []
@@ -1729,7 +1738,14 @@ def _ocr_pdf_page(page, page_number: int) -> str:
             score = scores[index] if index < len(scores) else 1.0
             if text and (score is None or float(score) >= 0.25):
                 accepted.append(str(text).strip())
-        return "\n".join(text for text in accepted if text)
+        content = "\n".join(text for text in accepted if text)
+        logger.info(
+            "PDF OCR单页完成: 第%s页，耗时%.2f秒，识别%s字符",
+            page_number,
+            time.perf_counter() - started_at,
+            len(content),
+        )
+        return content
     except (ImportError, ModuleNotFoundError):
         raise
     except Exception as exc:
