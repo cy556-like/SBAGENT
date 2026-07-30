@@ -19,6 +19,7 @@ import json
 import hashlib
 import logging
 import asyncio
+import threading
 from typing import Optional
 import time
 
@@ -46,6 +47,11 @@ except ImportError:
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+_PDF_TEXT_CACHE_VERSION = 1
+_PDF_MIN_USABLE_CHARS = 8
+_pdf_ocr_engine = None
+_pdf_ocr_engine_lock = threading.Lock()
 
 # 本地 Embedding 批量大小（本地模型无API限制，可适当增大）
 EMBEDDING_BATCH_SIZE = 50  # 智谱 embedding-3 API 单次最多64条，留余量用50
@@ -1493,6 +1499,279 @@ def _split_pptx_by_slides(docs: list, chunk_size: int = 800, chunk_overlap: int 
     return chunks
 
 
+def _pdf_text_cache_path(file_path: str) -> str:
+    """PDF解析结果持久化缓存；避免扫描版PDF在每次问答时重复OCR。"""
+    return f"{file_path}.sbagent-text.json"
+
+
+def _is_usable_pdf_text(text: str) -> bool:
+    """过滤只有页码、空白或大量乱码的伪文本层。"""
+    text = str(text or "").replace("\x00", " ").strip()
+    if len(text) < _PDF_MIN_USABLE_CHARS:
+        return False
+    visible = [char for char in text if not char.isspace()]
+    if not visible:
+        return False
+    replacement_ratio = sum(char in {"\ufffd", "\x00"} for char in visible) / len(visible)
+    return replacement_ratio <= 0.1
+
+
+def _read_pdf_text_cache(file_path: str) -> list:
+    """读取与原PDF大小、修改时间一致的解析缓存。"""
+    from langchain_core.documents import Document
+
+    cache_path = _pdf_text_cache_path(file_path)
+    if not os.path.exists(cache_path):
+        return []
+    try:
+        stat = os.stat(file_path)
+        with open(cache_path, "r", encoding="utf-8") as cache_file:
+            payload = json.load(cache_file)
+        if (
+            payload.get("version") != _PDF_TEXT_CACHE_VERSION
+            or payload.get("source_size") != stat.st_size
+            or payload.get("source_mtime_ns") != stat.st_mtime_ns
+        ):
+            return []
+        documents = []
+        for item in payload.get("pages", []):
+            content = str(item.get("content") or "").strip()
+            if not content:
+                continue
+            documents.append(Document(
+                page_content=content,
+                metadata={
+                    "source": file_path,
+                    "file_type": "pdf",
+                    "page": int(item.get("page", len(documents))),
+                    "page_number": int(item.get("page_number", len(documents) + 1)),
+                    "pdf_extraction_method": item.get("method", "cache"),
+                },
+            ))
+        if documents:
+            logger.info(
+                "PDF解析缓存命中: %s，共 %s 页",
+                os.path.basename(file_path),
+                len(documents),
+            )
+        return documents
+    except Exception as exc:
+        logger.warning("PDF解析缓存读取失败，将重新解析: %s", exc)
+        return []
+
+
+def _write_pdf_text_cache(file_path: str, documents: list) -> None:
+    """原子写入PDF解析缓存，防止并发读取到半个JSON文件。"""
+    cache_path = _pdf_text_cache_path(file_path)
+    temp_path = f"{cache_path}.{os.getpid()}.{threading.get_ident()}.tmp"
+    try:
+        stat = os.stat(file_path)
+        pages = []
+        for index, document in enumerate(documents):
+            content = str(document.page_content or "").strip()
+            if not content:
+                continue
+            page_index = int(document.metadata.get("page", index))
+            pages.append({
+                "page": page_index,
+                "page_number": page_index + 1,
+                "method": document.metadata.get("pdf_extraction_method", "native"),
+                "content": content,
+            })
+        payload = {
+            "version": _PDF_TEXT_CACHE_VERSION,
+            "source_size": stat.st_size,
+            "source_mtime_ns": stat.st_mtime_ns,
+            "pages": pages,
+        }
+        with open(temp_path, "w", encoding="utf-8") as cache_file:
+            json.dump(payload, cache_file, ensure_ascii=False)
+        os.replace(temp_path, cache_path)
+    except Exception as exc:
+        logger.warning("PDF解析缓存写入失败（不影响本次索引）: %s", exc)
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except OSError:
+            pass
+
+
+def _get_pdf_ocr_engine():
+    """延迟加载本地OCR模型；同一worker只初始化一次。"""
+    global _pdf_ocr_engine
+    if _pdf_ocr_engine is not None:
+        return _pdf_ocr_engine
+    with _pdf_ocr_engine_lock:
+        if _pdf_ocr_engine is None:
+            try:
+                from rapidocr import RapidOCR
+            except ImportError as exc:
+                raise ImportError(
+                    "扫描版PDF需要本地OCR组件，请安装 rapidocr 和 onnxruntime"
+                ) from exc
+            _pdf_ocr_engine = RapidOCR()
+    return _pdf_ocr_engine
+
+
+def _ocr_pdf_page(page, page_number: int) -> str:
+    """将单页PDF渲染为图像并执行中英文OCR。"""
+    try:
+        import numpy as np
+    except ImportError as exc:
+        raise ImportError("扫描版PDF OCR需要 numpy") from exc
+
+    width, height = page.get_size()
+    longest_edge = max(float(width), float(height), 1.0)
+    # 约144 DPI，同时限制超大工程图的最长边，避免8GB服务器内存突增。
+    scale = max(1.0, min(2.0, 2600.0 / longest_edge))
+    bitmap = None
+    image = None
+    try:
+        bitmap = page.render(scale=scale)
+        image = bitmap.to_pil().convert("RGB")
+        image_array = np.asarray(image)[:, :, ::-1].copy()
+        result = _get_pdf_ocr_engine()(image_array)
+        texts = list(getattr(result, "txts", None) or [])
+        scores = list(getattr(result, "scores", None) or [])
+        accepted = []
+        for index, text in enumerate(texts):
+            score = scores[index] if index < len(scores) else 1.0
+            if text and (score is None or float(score) >= 0.25):
+                accepted.append(str(text).strip())
+        return "\n".join(text for text in accepted if text)
+    except (ImportError, ModuleNotFoundError):
+        raise
+    except Exception as exc:
+        logger.warning("PDF第%s页OCR失败: %s", page_number, exc)
+        return ""
+    finally:
+        if image is not None:
+            try:
+                image.close()
+            except Exception:
+                pass
+        if bitmap is not None:
+            try:
+                bitmap.close()
+            except Exception:
+                pass
+
+
+def _load_pdf_with_fallback(file_path: str) -> list:
+    """多级PDF解析：PyPDF → PDFium文本层 → RapidOCR扫描页识别。"""
+    from langchain_core.documents import Document
+
+    cached = _read_pdf_text_cache(file_path)
+    if cached:
+        return cached
+
+    native_by_page = {}
+    native_page_count = 0
+    native_error = None
+    try:
+        native_docs = PyPDFLoader(file_path).load()
+        native_page_count = len(native_docs)
+        for index, document in enumerate(native_docs):
+            page_index = int(document.metadata.get("page", index))
+            content = str(document.page_content or "").replace("\x00", " ").strip()
+            if _is_usable_pdf_text(content):
+                native_by_page[page_index] = content
+    except Exception as exc:
+        native_error = exc
+        logger.warning("PyPDF解析失败，尝试PDFium/OCR: %s", exc)
+
+    try:
+        import pypdfium2 as pdfium
+    except ImportError as exc:
+        if native_page_count > 0 and len(native_by_page) == native_page_count:
+            documents = [
+                Document(
+                    page_content=content,
+                    metadata={
+                        "source": file_path,
+                        "file_type": "pdf",
+                        "page": page_index,
+                        "page_number": page_index + 1,
+                        "pdf_extraction_method": "pypdf",
+                    },
+                )
+                for page_index, content in sorted(native_by_page.items())
+            ]
+            _write_pdf_text_cache(file_path, documents)
+            return documents
+        missing_pages = native_page_count - len(native_by_page)
+        detail = f"；另有 {missing_pages} 页没有可读取文字层" if missing_pages > 0 else ""
+        if native_error:
+            detail += f"；PyPDF错误：{native_error}"
+        raise ImportError(
+            "PDF没有可读取的文字层，扫描版PDF需要安装 pypdfium2、rapidocr、onnxruntime"
+            + detail
+        ) from exc
+
+    pdf = None
+    documents = []
+    ocr_pages = 0
+    failed_pages = []
+    try:
+        pdf = pdfium.PdfDocument(file_path)
+        for page_index in range(len(pdf)):
+            page = pdf[page_index]
+            content = native_by_page.get(page_index, "")
+            method = "pypdf"
+            try:
+                text_page = None
+                if not _is_usable_pdf_text(content):
+                    try:
+                        text_page = page.get_textpage()
+                        pdfium_text = str(text_page.get_text_bounded() or "").replace("\x00", " ").strip()
+                        if _is_usable_pdf_text(pdfium_text):
+                            content = pdfium_text
+                            method = "pdfium"
+                    finally:
+                        if text_page is not None:
+                            text_page.close()
+
+                if not _is_usable_pdf_text(content):
+                    content = _ocr_pdf_page(page, page_index + 1)
+                    method = "rapidocr"
+                    if content.strip():
+                        ocr_pages += 1
+
+                if content.strip():
+                    documents.append(Document(
+                        page_content=content.strip(),
+                        metadata={
+                            "source": file_path,
+                            "file_type": "pdf",
+                            "page": page_index,
+                            "page_number": page_index + 1,
+                            "pdf_extraction_method": method,
+                        },
+                    ))
+                else:
+                    failed_pages.append(page_index + 1)
+            finally:
+                page.close()
+    finally:
+        if pdf is not None:
+            pdf.close()
+
+    if not documents:
+        raise ValueError(
+            "PDF未提取到任何可检索文字。该文件可能是扫描版、损坏或加密，且本地OCR未能识别。"
+        )
+
+    _write_pdf_text_cache(file_path, documents)
+    logger.info(
+        "PDF解析完成: %s，可用页=%s，OCR页=%s，空白/失败页=%s",
+        os.path.basename(file_path),
+        len(documents),
+        ocr_pages,
+        len(failed_pages),
+    )
+    return documents
+
+
 def load_document(file_path: str) -> list:
     """
     根据文件类型加载文档
@@ -1506,8 +1785,7 @@ def load_document(file_path: str) -> list:
     ext = os.path.splitext(file_path)[1].lower()
 
     if ext == ".pdf":
-        loader = PyPDFLoader(file_path)
-        return loader.load()
+        return _load_pdf_with_fallback(file_path)
     elif ext == ".txt":
         loader = TextLoader(file_path, encoding="utf-8")
         return loader.load()
@@ -3114,6 +3392,9 @@ def delete_document(filename: str, agent_id: str = None) -> dict:
         if os.path.exists(file_path):
             try:
                 os.remove(file_path)
+                pdf_cache_path = _pdf_text_cache_path(file_path)
+                if os.path.exists(pdf_cache_path):
+                    os.remove(pdf_cache_path)
                 file_deleted = True
                 found_in_any = True
                 break

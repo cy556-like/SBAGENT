@@ -84,6 +84,21 @@ class RegressionContracts(unittest.TestCase):
         self.assertNotIn("yield {\"type\": \"model_switch\"", routes)
         self.assertIn("MiMo 未配置 MIMO_API_KEY", core)
 
+    def test_pdf_loader_has_text_fallback_ocr_and_persistent_cache(self):
+        rag = read("app/rag/document.py")
+        requirements = read("requirements.txt")
+
+        self.assertIn("def _load_pdf_with_fallback", rag)
+        self.assertIn("PyPDFLoader(file_path).load()", rag)
+        self.assertIn("import pypdfium2 as pdfium", rag)
+        self.assertIn("from rapidocr import RapidOCR", rag)
+        self.assertIn(".sbagent-text.json", rag)
+        self.assertIn("source_mtime_ns", rag)
+        self.assertIn("return _load_pdf_with_fallback(file_path)", rag)
+        self.assertIn("pypdfium2", requirements)
+        self.assertIn("rapidocr", requirements)
+        self.assertIn("onnxruntime", requirements)
+
 
 if __name__ == "__main__":
     unittest.main()
