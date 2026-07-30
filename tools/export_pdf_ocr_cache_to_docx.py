@@ -43,6 +43,7 @@ def export_cache(filename: str, output_path: Path | None = None) -> Path:
     project_root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(project_root))
     from app.config import settings
+    from app.rag.document import _get_export_dir
 
     documents_dir = Path(settings.DOCUMENTS_DIR)
     cache_path, complete = _find_cache(documents_dir, filename)
@@ -53,7 +54,8 @@ def export_cache(filename: str, output_path: Path | None = None) -> Path:
     pages.sort(key=lambda item: int(item.get("page", 0)))
 
     if output_path is None:
-        export_dir = project_root / "data" / "exports"
+        # 使用应用原本的导出目录，方便现有下载接口统一读取。
+        export_dir = Path(_get_export_dir())
         suffix = "文字版" if complete else "文字版-处理中"
         output_path = export_dir / f"{Path(filename).stem}-{suffix}.docx"
     output_path.parent.mkdir(parents=True, exist_ok=True)
