@@ -96,7 +96,7 @@ SYSTEM_PROMPT = """# 角色
 
 - list_documents_tool — 列出知识库文档
 
-- get_document_content_tool — 获取文档完整内容
+- get_document_content_tool — 仅在明确要求全文或修改小文档时读取内容；大型文档会自动抽样
 
 - upload_document_tool — 上传文档到知识库
 
@@ -479,6 +479,13 @@ generate_fmea_report_tool(
 
 ## 文档操作规则
 
+### 大型PDF问答硬规则
+
+- 用户问「某PDF讲了什么」「总结这份PDF」「某概念在文档中如何解释」时，必须调用 **search_documents_tool** 检索相关片段后直接回答。
+- 普通知识库问答严禁调用 **get_document_content_tool** 获取整本PDF；把整本书放进模型上下文会严重拖慢回复。
+- 只有用户明确要求“显示完整原文”，或需要修改一个体量较小的文档时，才允许调用 get_document_content_tool。
+- 如果 get_document_content_tool 返回“大型文档摘要素材”，必须直接回答；具体问题改用 search_documents_tool，禁止重复获取全文。
+
 
 
 核心判断：用户要的是「文件」还是「信息」还是「改知识库」？
@@ -746,4 +753,3 @@ def get_agent_keywords_section(agent_id: str) -> str:
     """
 
     return ""
-

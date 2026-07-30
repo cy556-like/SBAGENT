@@ -562,16 +562,47 @@ def upload_document_tool(file_path: str) -> str:
         return f"【上传失败】{str(e)}\n可能原因：文件损坏、内容为空或格式异常。请检查文件后重试。"
 
 
+_MAX_DOCUMENT_TOOL_CHARS = 12000
+_DOCUMENT_SAMPLE_SECTIONS = 6
+
+
+def _sample_large_document(content: str, max_chars: int = _MAX_DOCUMENT_TOOL_CHARS) -> str:
+    """均匀抽取大型文档的代表片段，避免把整本书塞进LLM上下文。"""
+    content = str(content or "")
+    if len(content) <= max_chars:
+        return content
+
+    section_count = _DOCUMENT_SAMPLE_SECTIONS
+    section_size = max(800, max_chars // section_count)
+    max_start = max(0, len(content) - section_size)
+    starts = [
+        round(max_start * index / max(section_count - 1, 1))
+        for index in range(section_count)
+    ]
+    excerpts = []
+    for index, start in enumerate(starts, 1):
+        end = min(len(content), start + section_size)
+        percentage = round(start / max(len(content), 1) * 100)
+        excerpt = content[start:end].strip()
+        if excerpt:
+            excerpts.append(
+                f"[代表片段 {index}/{section_count}，约位于全文 {percentage}% 处]\n{excerpt}"
+            )
+    return "\n\n".join(excerpts)
+
+
 @tool
 def get_document_content_tool(filename: str) -> str:
-    """获取知识库中指定文档的完整内容。直接从原始文件读取，不依赖向量搜索，不会消耗embedding额度。
+    """读取知识库中指定文档的内容；大型文档只返回均匀抽取的代表片段。
 
-    【用途】当需要查看或获取某个文档的完整内容时使用。修改文档前应先用此工具获取完整内容。
-    【典型问题】「显示xxx文档的完整内容」「获取xxx文档全文」「查看xxx文档」
+    【仅适用】用户明确要求显示全文，或确实要修改一个体量较小的文档。
+    【禁止用于普通问答】用户问「某PDF讲了什么」「某个概念是什么」「总结某本书」
+    或询问大型PDF中的信息时，必须使用 search_documents_tool 检索相关片段，
+    不得调用本工具获取整本PDF。
     【与search_documents_tool的区别】
-    - search_documents_tool：搜索知识库，返回与查询相关的文档片段（500字/片），适合查找特定信息
-    - get_document_content_tool：返回指定文档的完整全文，适合需要整体查看或修改文档的场景
-    【重要】修改文档前，请先调用此工具获取完整内容，修改后再调用modify_document_tool保存。
+    - search_documents_tool：普通问答、总结、概念查询、PDF内容查询的首选工具
+    - get_document_content_tool：仅用于明确的全文查看或小文档修改
+    【大型文档保护】超过12000字符时只返回前中后均匀抽取的代表片段，禁止重复调用本工具。
 
     Args:
         filename: 文档文件名（含扩展名），需与知识库中的文件名完全一致。
@@ -589,9 +620,21 @@ def get_document_content_tool(filename: str) -> str:
     if result["status"] == "error":
         return f"【获取失败】{result['message']}"
     
-    # 成功：返回完整内容
-    output = f"【文档内容】{filename}（共 {result['char_count']} 字符）\n\n"
-    output += result["content"]
+    content = result["content"]
+    char_count = result["char_count"]
+    if char_count > _MAX_DOCUMENT_TOOL_CHARS:
+        sampled = _sample_large_document(content)
+        output = (
+            f"【大型文档摘要素材】{filename}（原文共 {char_count} 字符）\n\n"
+            f"为保证响应速度，系统没有把整本PDF送入模型，而是均匀抽取了"
+            f"{_DOCUMENT_SAMPLE_SECTIONS}个代表片段：\n\n{sampled}\n\n"
+            "【后续要求】请直接根据以上片段概括文档主题；如果用户询问具体概念，"
+            "请改用 search_documents_tool 搜索该概念。不要再次调用 get_document_content_tool。"
+        )
+        return output
+
+    output = f"【文档内容】{filename}（共 {char_count} 字符）\n\n"
+    output += content
     return output
 
 

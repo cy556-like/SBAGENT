@@ -246,32 +246,44 @@ async def _stream_with_user_model(username: str, generator_factory):
         emitted_token = False
         retry_next = False
         stream = None
+        completed = False
         try:
+            # ContextVar 不能跨 async-generator 的 yield 生命周期持有：
+            # 浏览器断开时 aclose/athrow 可能由另一个 asyncio Context 执行。
+            # 因此仅在创建流和读取单个事件时短暂绑定模型，yield 前必须复位。
             with use_model(model_id):
                 stream = generator_factory()
-                async for item in stream:
-                    if (
-                        isinstance(item, dict)
-                        and item.get("type") == "token"
-                        and item.get("content")
-                    ):
-                        emitted_token = True
 
-                    is_quota_event = (
-                        isinstance(item, dict)
-                        and item.get("type") == "error"
-                        and is_model_quota_error(item.get("content", ""))
-                    )
-                    if has_next and not emitted_token and is_quota_event:
-                        retry_next = True
-                        logger.warning(
-                            "Auto 模式模型额度不可用，后端静默尝试下一候选：%s",
-                            model_id,
-                        )
-                        break
-                    yield item
-                else:
+            while True:
+                try:
+                    with use_model(model_id):
+                        item = await stream.__anext__()
+                except StopAsyncIteration:
+                    completed = True
                     return
+
+                if (
+                    isinstance(item, dict)
+                    and item.get("type") == "token"
+                    and item.get("content")
+                ):
+                    emitted_token = True
+
+                is_quota_event = (
+                    isinstance(item, dict)
+                    and item.get("type") == "error"
+                    and is_model_quota_error(item.get("content", ""))
+                )
+                if has_next and not emitted_token and is_quota_event:
+                    retry_next = True
+                    logger.warning(
+                        "Auto 模式模型额度不可用，后端静默尝试下一候选：%s",
+                        model_id,
+                    )
+                    break
+
+                # 此处没有任何未复位的 ContextVar token，跨任务关闭是安全的。
+                yield item
         except Exception as exc:
             if has_next and not emitted_token and is_model_quota_error(exc):
                 retry_next = True
@@ -282,10 +294,14 @@ async def _stream_with_user_model(username: str, generator_factory):
             else:
                 raise
         finally:
-            if retry_next and stream is not None:
+            if not completed and stream is not None:
                 close = getattr(stream, "aclose", None)
                 if close is not None:
-                    await close()
+                    try:
+                        with use_model(model_id):
+                            await close()
+                    except Exception as close_exc:
+                        logger.debug("关闭模型流时忽略异常: %s", close_exc)
 
         if retry_next:
             continue

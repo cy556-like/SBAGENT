@@ -1,4 +1,9 @@
 """Low-dependency regression contracts for critical SBAGENT isolation paths."""
+import ast
+import asyncio
+import contextlib
+import contextvars
+import logging
 from pathlib import Path
 import unittest
 
@@ -100,6 +105,139 @@ class RegressionContracts(unittest.TestCase):
         self.assertIn("onnxruntime", requirements)
         self.assertIn("numpy==1.26.4", requirements)
         self.assertIn("opencv-python==4.11.0.86", requirements)
+
+    def test_large_pdf_questions_do_not_send_full_book_to_model(self):
+        tools = read("app/agent/tools.py")
+        prompts = read("app/agent/prompts.py")
+        core = read("app/agent/core.py")
+
+        self.assertIn("_MAX_DOCUMENT_TOOL_CHARS = 12000", tools)
+        self.assertIn("def _sample_large_document", tools)
+        self.assertIn("【大型文档摘要素材】", tools)
+        self.assertIn("禁止重复调用本工具", tools)
+        self.assertIn("大型PDF问答硬规则", prompts)
+        self.assertIn("必须调用 **search_documents_tool**", prompts)
+        self.assertIn('"get_document_content_tool": "读取文档内容"', core)
+
+    def test_stream_model_context_does_not_span_async_yield(self):
+        routes = read("app/api/routes.py")
+
+        self.assertIn("item = await stream.__anext__()", routes)
+        self.assertIn("ContextVar 不能跨 async-generator", routes)
+        self.assertIn("yield item", routes)
+        unsafe = (
+            "with use_model(model_id):\n"
+            "                stream = generator_factory()\n"
+            "                async for item in stream:"
+        )
+        self.assertNotIn(unsafe, routes)
+
+    def test_stream_can_be_closed_from_another_asyncio_task(self):
+        """Regression for ContextVar token reset from a different Context."""
+        routes = read("app/api/routes.py")
+        tree = ast.parse(routes)
+        function = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.AsyncFunctionDef)
+            and node.name == "_stream_with_user_model"
+        )
+        module = ast.fix_missing_locations(
+            ast.Module(body=[function], type_ignores=[])
+        )
+
+        active_model = contextvars.ContextVar("test_active_model", default=None)
+
+        @contextlib.contextmanager
+        def use_model(model_id):
+            token = active_model.set(model_id)
+            try:
+                yield
+            finally:
+                active_model.reset(token)
+
+        namespace = {
+            "AUTO_MODEL_ID": "auto",
+            "_auto_model_candidates": lambda: ("glm", "mimo", "kimi"),
+            "get_user_model": lambda _username: "glm",
+            "is_model_quota_error": lambda _value: False,
+            "logger": logging.getLogger("stream-context-regression"),
+            "use_model": use_model,
+        }
+        exec(compile(module, "routes-stream-test", "exec"), namespace)
+        stream_wrapper = namespace["_stream_with_user_model"]
+
+        async def source():
+            self.assertEqual(active_model.get(), "glm")
+            yield {"type": "token", "content": "OK"}
+            await asyncio.Event().wait()
+
+        async def scenario():
+            wrapped = stream_wrapper("adminsubao", source)
+            first = await wrapped.__anext__()
+            self.assertEqual(first["content"], "OK")
+            self.assertIsNone(active_model.get())
+            # StreamingResponse/客户端断开时，关闭动作可能发生在另一个 Task。
+            await asyncio.create_task(wrapped.aclose())
+            self.assertIsNone(active_model.get())
+
+        asyncio.run(scenario())
+
+    def test_auto_stream_quota_failover_stays_silent(self):
+        routes = read("app/api/routes.py")
+        tree = ast.parse(routes)
+        function = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.AsyncFunctionDef)
+            and node.name == "_stream_with_user_model"
+        )
+        module = ast.fix_missing_locations(
+            ast.Module(body=[function], type_ignores=[])
+        )
+
+        active_model = contextvars.ContextVar("test_auto_model", default=None)
+
+        @contextlib.contextmanager
+        def use_model(model_id):
+            token = active_model.set(model_id)
+            try:
+                yield
+            finally:
+                active_model.reset(token)
+
+        namespace = {
+            "AUTO_MODEL_ID": "auto",
+            "_auto_model_candidates": lambda: ("glm", "mimo", "kimi"),
+            "get_user_model": lambda _username: "auto",
+            "is_model_quota_error": lambda value: "quota" in str(value).lower(),
+            "logger": logging.getLogger("auto-stream-regression"),
+            "use_model": use_model,
+        }
+        exec(compile(module, "routes-auto-test", "exec"), namespace)
+        stream_wrapper = namespace["_stream_with_user_model"]
+
+        def source():
+            model_id = active_model.get()
+
+            async def events():
+                if model_id in {"glm", "mimo"}:
+                    yield {"type": "error", "content": "quota exhausted"}
+                else:
+                    yield {"type": "token", "content": "Kimi OK"}
+
+            return events()
+
+        async def scenario():
+            return [
+                item
+                async for item in stream_wrapper("adminsubao", source)
+            ]
+
+        self.assertEqual(
+            asyncio.run(scenario()),
+            [{"type": "token", "content": "Kimi OK"}],
+        )
 
 
 if __name__ == "__main__":

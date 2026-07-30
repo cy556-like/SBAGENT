@@ -1405,7 +1405,7 @@ TOOL_DISPLAY_NAMES = {
     "lookup_employee_tool": "查询员工",
     "list_departments_tool": "部门列表",
     "list_documents_tool": "文档列表",
-    "get_document_content_tool": "获取文档全文",
+    "get_document_content_tool": "读取文档内容",
     "upload_document_tool": "上传文档",
     "delete_document_tool": "删除文档",
     "modify_document_tool": "修改文档",
