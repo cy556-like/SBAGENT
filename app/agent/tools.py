@@ -58,6 +58,17 @@ def get_current_session_id() -> str:
     return _session_id_var.get()
 
 
+def _export_download_url(filename: str) -> str:
+    """生成只允许当前会话下载的导出链接；无会话时兼容旧版根目录导出。"""
+    from urllib.parse import quote
+
+    url = f"/api/v1/documents/export-download/{quote(filename, safe='')}"
+    session_id = get_current_session_id()
+    if session_id:
+        url += f"?session_id={quote(session_id, safe='')}"
+    return url
+
+
 # ===== [#8] 工具结果缓存 =====
 class ToolCache:
     """带 TTL 的 LRU 工具结果缓存（使用 OrderedDict 实现 O(1) 读写）
@@ -787,7 +798,7 @@ def export_document_tool(content: str, filename: str = "", title: str = "") -> s
         result = export_document_as_docx(content, filename, title=title, session_id=get_current_session_id())
         if result["status"] == "success":
             actual_filename = result.get('filename', filename)
-            download_url = f"/api/v1/documents/export-download/{actual_filename}"
+            download_url = _export_download_url(actual_filename)
             return f"【导出成功】文档已生成：{actual_filename}\n\n下载链接：{download_url}\n\n【重要】你必须在回复中完整展示上面的下载链接URL（{download_url}），前端依赖这个URL生成下载按钮。不要省略URL，不要只说\"请下载\"而不给出URL链接。\n【重要】不要在对话中重复输出文档的完整内容，用户可以直接下载文件查看。只需简要介绍文档包含什么内容即可。"
         else:
             return f"【导出失败】{result.get('message', '未知错误')}"
@@ -831,7 +842,7 @@ def export_xlsx_tool(content: str, filename: str = "", title: str = "") -> str:
         result = export_document_as_xlsx(content, filename, title=title, session_id=get_current_session_id())
         if result["status"] == "success":
             actual_filename = result.get('filename', filename)
-            download_url = f"/api/v1/documents/export-download/{actual_filename}"
+            download_url = _export_download_url(actual_filename)
             return f"【导出成功】Excel文档已生成：{actual_filename}\n\n下载链接：{download_url}\n\n【重要】你必须在回复中完整展示上面的下载链接URL（{download_url}），前端依赖这个URL生成下载按钮。不要省略URL，不要只说\"请下载\"而不给出URL链接。\n【重要】不要在对话中重复输出表格的完整内容，用户可以直接下载文件查看。只需简要介绍文件包含什么内容即可。"
         else:
             return f"【导出失败】{result.get('message', '未知错误')}"
@@ -1183,8 +1194,8 @@ def generate_8d_report_tool(
                 logger.info(f"[8D] 文件验证: xlsx={'存在' if xlsx_exists else '不存在'} ({xlsx_path}), docx={'存在' if docx_exists else '不存在'} ({docx_path})")
 
                 # 生成下载链接（前端会拦截这些 URL）
-                xlsx_url = f"/api/v1/documents/export-download/{xlsx_name}" if xlsx_name else ""
-                docx_url = f"/api/v1/documents/export-download/{docx_name}" if docx_name else ""
+                xlsx_url = _export_download_url(xlsx_name) if xlsx_name else ""
+                docx_url = _export_download_url(docx_name) if docx_name else ""
 
                 # 明确告诉 Agent 实际启用了哪些模式
                 modes_enabled = []
@@ -1230,10 +1241,10 @@ def generate_8d_report_tool(
             msg = "【8D报告生成成功】\n"
             if xlsx_match:
                 xlsx_name = os.path.basename(xlsx_match.group(1).strip())
-                msg += f"📄 Excel 文件：{xlsx_name}\n下载链接：/api/v1/documents/export-download/{xlsx_name}\n\n"
+                msg += f"📄 Excel 文件：{xlsx_name}\n下载链接：{_export_download_url(xlsx_name)}\n\n"
             if docx_match:
                 docx_name = os.path.basename(docx_match.group(1).strip())
-                msg += f"📝 Word 文件：{docx_name}\n下载链接：/api/v1/documents/export-download/{docx_name}\n\n"
+                msg += f"📝 Word 文件：{docx_name}\n下载链接：{_export_download_url(docx_name)}\n\n"
             msg += "【重要】你必须在回复中完整展示上面的下载链接 URL，前端依赖这些 URL 生成下载按钮。"
             return msg
 
@@ -1515,8 +1526,8 @@ def generate_fmea_report_tool(
             return f"【FMEA报告生成失败】脚本报告成功但文件不存在。\nxlsx_path: {xlsx_path}\ndocx_path: {docx_path}"
 
         # 生成下载链接（前端会拦截这些 URL）
-        xlsx_url = f"/api/v1/documents/export-download/{xlsx_name}" if xlsx_name else ""
-        docx_url = f"/api/v1/documents/export-download/{docx_name}" if docx_name else ""
+        xlsx_url = _export_download_url(xlsx_name) if xlsx_name else ""
+        docx_url = _export_download_url(docx_name) if docx_name else ""
 
         # 提取统计信息
         chains_count_match = _re.search(r'失效链数[：:]\s*(\d+)', stdout)

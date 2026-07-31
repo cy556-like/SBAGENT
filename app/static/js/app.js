@@ -3062,8 +3062,8 @@ function injectDownloadButtons(container) {
     // 2. 容忍 URL 被拆到多个文本节点（marked 可能把 URL 拆成 <em> 等子元素）
     // 3. 第三步兜底用 DOM 操作替代 innerHTML 字符串拼接（避免 onclick 引号转义问题）
     // 4. 处理 marked 自动把纯 URL 转成 <a href> 的情况（autolink 或 GFM）
-    const EXPORT_URL_PATTERN = /\/api\/v1\/documents\/export[-\s]*download\/[^ \n\)<"\u0060]+\.(docx|xlsx|pdf|txt)/;
-    const EXPORT_URL_GLOBAL = /(?:\/api\/v1\/documents\/export[-\s]*download\/[^ \n\)<"\u0060]+\.(docx|xlsx|pdf|txt))/g;
+    const EXPORT_URL_PATTERN = /\/api\/v1\/documents\/export[-\s]*download\/[^ \n\)<"\u0060?]+\.(docx|xlsx|pdf|txt)(?:\?session_id=[A-Za-z0-9._~%:-]+)?/;
+    const EXPORT_URL_GLOBAL = /(?:\/api\/v1\/documents\/export[-\s]*download\/[^ \n\)<"\u0060?]+\.(docx|xlsx|pdf|txt)(?:\?session_id=[A-Za-z0-9._~%:-]+)?)/g;
     const btnLabels = { docx: '点击下载Word文档', xlsx: '点击下载Excel表格', pdf: '点击下载PDF文档', txt: '点击下载文本文件' };
 
     // 工具函数：清理 URL（去除空格、修正格式）
@@ -3074,6 +3074,11 @@ function injectDownloadButtons(container) {
             .replace(/\/export-\s+download\//, '/export-download/');  // 修正 export- download 格式
     }
 
+    function exportExtension(url) {
+        const match = url.match(/\.(docx|xlsx|pdf|txt)(?:\?|$)/i);
+        return match ? match[1].toLowerCase() : '';
+    }
+
     // 1. 处理所有 <a> 标签中的导出链接
     //    覆盖：marked 渲染的 [文字](URL)、autolink 自动转的 <a href="URL">
     const existingLinks = container.querySelectorAll('a[href*="/api/v1/documents/export"], a[href*="api/v1/documents/export"]');
@@ -3082,7 +3087,7 @@ function injectDownloadButtons(container) {
         // 清理 href 后再匹配
         const cleanedHref = cleanUrl(href);
         if (!EXPORT_URL_PATTERN.test(cleanedHref)) return;
-        const ext = cleanedHref.split('.').pop().toLowerCase();
+        const ext = exportExtension(cleanedHref);
         if (!['docx', 'xlsx', 'pdf', 'txt'].includes(ext)) return;
         const correctUrl = cleanUrl(cleanedHref.match(EXPORT_URL_PATTERN)[0]);
         a.className = 'doc-download-btn' + (ext === 'xlsx' ? ' xlsx-btn' : '');
@@ -3109,7 +3114,7 @@ function injectDownloadButtons(container) {
             const url = urlMatch[0];
             // 修正URL格式：清理空格 + 修正斜杠
             const correctUrl = cleanUrl(url);
-            const ext = correctUrl.split('.').pop().toLowerCase();
+            const ext = exportExtension(correctUrl);
             const btn = document.createElement('a');
             btn.className = 'doc-download-btn' + (ext === 'xlsx' ? ' xlsx-btn' : '');
             btn.href = 'javascript:void(0)';
@@ -3150,7 +3155,7 @@ function injectDownloadButtons(container) {
         if (urlMatch) {
             const url = urlMatch[0];
             const correctUrl = cleanUrl(url);
-            const ext = correctUrl.split('.').pop().toLowerCase();
+            const ext = exportExtension(correctUrl);
             const btn = document.createElement('a');
             btn.className = 'doc-download-btn' + (ext === 'xlsx' ? ' xlsx-btn' : '');
             btn.href = 'javascript:void(0)';
@@ -3176,7 +3181,7 @@ async function downloadExportFile(url) {
     try {
         // [修复 v2] URL 完整性校验：防止流式渲染时点击到残缺 URL
         // 合法的导出 URL 必须以 /api/v1/documents/export-download/ 开头，且以文件扩展名结尾
-        const validUrlPattern = /^\/api\/v1\/documents\/export-download\/[^]+\.(docx|xlsx|pdf|txt)$/i;
+        const validUrlPattern = /^\/api\/v1\/documents\/export-download\/[^?]+\.(docx|xlsx|pdf|txt)(?:\?session_id=[A-Za-z0-9._~%:-]+)?$/i;
         if (!validUrlPattern.test(url)) {
             console.warn('下载URL不完整或格式错误:', url);
             showToast('文件链接尚未生成完毕，请稍候 1-2 秒后再试', 3000);
@@ -3192,7 +3197,8 @@ async function downloadExportFile(url) {
         // 从Content-Disposition提取文件名
         const disposition = response.headers.get('Content-Disposition');
         // 根据URL中的扩展名决定默认文件名
-        const urlExt = url.split('.').pop().toLowerCase();
+        const extMatch = url.match(/\.(docx|xlsx|pdf|txt)(?:\?|$)/i);
+        const urlExt = extMatch ? extMatch[1].toLowerCase() : '';
         const defaultNames = { docx: '导出文档.docx', xlsx: '导出表格.xlsx', pdf: '导出文档.pdf', txt: '导出文本.txt' };
         let filename = defaultNames[urlExt] || '导出文档.docx';
         if (disposition) {
@@ -3206,7 +3212,7 @@ async function downloadExportFile(url) {
         }
         // 从URL提取文件名（兜底：默认文件名未被服务端覆盖时才使用URL中的文件名）
         if (filename === defaultNames[urlExt] || filename === '导出文档.docx') {
-            const urlParts = url.split('/');
+            const urlParts = url.split('?')[0].split('/');
             const lastPart = urlParts[urlParts.length - 1];
             if (lastPart) { try { filename = decodeURIComponent(lastPart); } catch(e) { filename = lastPart; } }
         }

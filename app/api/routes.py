@@ -175,10 +175,8 @@ from app.memory.manager import (
 from app.config import (
     settings, AVAILABLE_MODELS, get_effective_model,
     get_user_model, set_user_model, use_model,
-    AUTO_MODEL_ID, MODEL_FALLBACK_CHAINS,
-    VOLCENGINE_MODELS, ARK_STANDARD_MODELS,
-    QWEN_MODELS, MIMO_MODELS, KIMI_MODELS,
-    is_model_quota_error,
+    AUTO_MODEL_ID, AUTO_MODEL_FALLBACK_CHAIN,
+    MIMO_MODELS, KIMI_MODELS, is_model_quota_error,
 )
 
 from app.utils.stats import record_message, record_session, get_stats
@@ -190,55 +188,30 @@ from app.agent.storage import sync_agents as storage_sync_agents, load_agents as
 logger = logging.getLogger(__name__)
 
 
-def _model_candidates(selected_model: str):
-    """返回所选模型的容灾链；未配置密钥的备用供应商静默跳过。"""
-    chain = MODEL_FALLBACK_CHAINS.get(selected_model, (selected_model,))
+def _auto_model_candidates():
+    """返回 Auto 可用候选；未配置密钥的备用供应商直接静默跳过。"""
     candidates = []
-    for index, model_id in enumerate(chain):
-        # 明确选择的首个模型保留，让缺少主配置时返回准确错误；
-        # Auto 和后续备用模型才允许因未配置密钥而跳过。
-        keep_unconfigured_primary = selected_model != AUTO_MODEL_ID and index == 0
-        if (
-            model_id in ARK_STANDARD_MODELS
-            and not settings.ARK_API_KEY
-            and not keep_unconfigured_primary
-        ):
-            logger.warning("模型容灾跳过火山方舟标准 API：服务器未配置 ARK_API_KEY")
-            continue
-        if model_id in VOLCENGINE_MODELS and not settings.DEEPSEEK_API_KEY:
-            if keep_unconfigured_primary:
-                candidates.append(model_id)
-                continue
-            logger.warning("模型容灾跳过火山引擎：服务器未配置 DEEPSEEK_API_KEY")
-            continue
-        if model_id in QWEN_MODELS and not settings.QWEN_API_KEY:
-            if keep_unconfigured_primary:
-                candidates.append(model_id)
-                continue
-            logger.warning("模型容灾跳过千问：服务器未配置 QWEN_API_KEY")
-            continue
+    for model_id in AUTO_MODEL_FALLBACK_CHAIN:
         if model_id in MIMO_MODELS and not settings.MIMO_API_KEY:
-            if keep_unconfigured_primary:
-                candidates.append(model_id)
-                continue
-            logger.warning("模型容灾跳过 MiMo：服务器未配置 MIMO_API_KEY")
+            logger.warning("Auto 容灾跳过 MiMo：服务器未配置 MIMO_API_KEY")
             continue
         if model_id in KIMI_MODELS and not settings.MOONSHOT_API_KEY:
-            if keep_unconfigured_primary:
-                candidates.append(model_id)
-                continue
-            logger.warning("模型容灾跳过 Kimi：服务器未配置 MOONSHOT_API_KEY")
+            logger.warning("Auto 容灾跳过 Kimi：服务器未配置 MOONSHOT_API_KEY")
             continue
         candidates.append(model_id)
     return tuple(candidates)
 
 
 def _chat_with_user_model(username: str, *args, **kwargs):
-    """绑定账号模型；按所选模型的配置链处理额度类静默容灾。"""
+    """绑定账号模型；Auto 仅在额度类错误时按候选顺序静默容灾。"""
     selected_model = get_user_model(username)
-    candidates = _model_candidates(selected_model)
+    candidates = (
+        _auto_model_candidates()
+        if selected_model == AUTO_MODEL_ID
+        else (selected_model,)
+    )
     if not candidates:
-        raise RuntimeError(f"模型 {selected_model} 没有可用的调用配置")
+        raise RuntimeError("Auto 模式没有可用的模型配置")
 
     last_error = None
     for index, model_id in enumerate(candidates):
@@ -251,18 +224,22 @@ def _chat_with_user_model(username: str, *args, **kwargs):
             if not (has_next and is_model_quota_error(exc)):
                 raise
             logger.warning(
-                "模型额度不可用，后端静默尝试下一候选：%s",
+                "Auto 模式模型额度不可用，后端静默尝试下一候选：%s",
                 model_id,
             )
     raise last_error
 
 
 async def _stream_with_user_model(username: str, generator_factory):
-    """绑定流式请求模型；额度容灾不向前端发送切换或中间错误。"""
+    """绑定流式请求模型；Auto 额度容灾不向前端发送切换或中间错误。"""
     selected_model = get_user_model(username)
-    candidates = _model_candidates(selected_model)
+    candidates = (
+        _auto_model_candidates()
+        if selected_model == AUTO_MODEL_ID
+        else (selected_model,)
+    )
     if not candidates:
-        raise RuntimeError(f"模型 {selected_model} 没有可用的调用配置")
+        raise RuntimeError("Auto 模式没有可用的模型配置")
 
     for index, model_id in enumerate(candidates):
         has_next = index + 1 < len(candidates)
@@ -300,7 +277,7 @@ async def _stream_with_user_model(username: str, generator_factory):
                 if has_next and not emitted_token and is_quota_event:
                     retry_next = True
                     logger.warning(
-                        "模型额度不可用，后端静默尝试下一候选：%s",
+                        "Auto 模式模型额度不可用，后端静默尝试下一候选：%s",
                         model_id,
                     )
                     break
@@ -311,7 +288,7 @@ async def _stream_with_user_model(username: str, generator_factory):
             if has_next and not emitted_token and is_model_quota_error(exc):
                 retry_next = True
                 logger.warning(
-                    "模型额度不可用，后端静默尝试下一候选：%s",
+                    "Auto 模式模型额度不可用，后端静默尝试下一候选：%s",
                     model_id,
                 )
             else:
@@ -2058,195 +2035,64 @@ async def export_xlsx_api(req: ExportXlsxRequest):
 
 @router.get("/documents/export-download/{filename}", summary="下载AI导出的文档")
 
-async def download_export_document(filename: str, username: str = Depends(require_auth)):
-
-    """
-
-    下载AI生成的导出文档（docx/txt）
-
-    文件保存在 data/export/{session_id}/ 目录中
-
-    支持会话子目录查找 + 兼容旧版平铺目录
-
-    """
-
+async def download_export_document(
+    filename: str,
+    session_id: str = Query("", description="生成该文件的会话ID"),
+    username: str = Depends(require_auth),
+):
+    """下载当前账号拥有的会话导出文件；旧链接只能访问导出根目录。"""
     from urllib.parse import unquote
-
     import unicodedata
 
-
-
-    # URL解码文件名（处理中文文件名）
-
-    # FastAPI可能已经自动解码一次，再unquote确保双重编码也能处理
-
     decoded_filename = unquote(unquote(filename))
+    if (
+        not decoded_filename
+        or decoded_filename in {".", ".."}
+        or "/" in decoded_filename
+        or "\\" in decoded_filename
+        or "\x00" in decoded_filename
+    ):
+        raise HTTPException(status_code=400, detail="无效的导出文件名")
+    safe_filename = decoded_filename
 
-    # 安全检查：防止路径穿越
-
-    safe_filename = decoded_filename.replace('/', '_').replace('\\', '_').replace('..', '_')
-
-
-
-    export_root = _get_export_dir()  # export 根目录
-
-    file_path = None
-
-
-
-    # 1. 先在会话子目录中查找（新版本：data/export/{session_id}/xxx.docx）
-
-    if os.path.exists(export_root):
-
-        for item in os.listdir(export_root):
-
-            sub_dir = os.path.join(export_root, item)
-
-            if os.path.isdir(sub_dir):
-
-                candidate = os.path.join(sub_dir, safe_filename)
-
-                if os.path.exists(candidate):
-
-                    file_path = candidate
-
-                    logger.info(f"[导出下载] 在会话目录 {item}/ 中找到文件: {safe_filename}")
-
-                    break
-
-
-
-    # 2. 兼容旧版：直接在 export 根目录查找
-
-    if file_path is None:
-
-        file_path = os.path.join(export_root, safe_filename)
-
-
-
-    # 3. 精确匹配
-
-    if os.path.exists(file_path):
-
-        logger.info(f"[导出下载] 文件匹配成功: {safe_filename}")
-
+    export_root = os.path.realpath(_get_export_dir())
+    if session_id:
+        if session_id in {".", ".."} or "/" in session_id or "\\" in session_id or "\x00" in session_id:
+            raise HTTPException(status_code=400, detail="无效的会话ID")
+        ensure_chat_ownership(username, session_id)
+        search_dir = os.path.realpath(os.path.join(export_root, session_id))
+        if os.path.dirname(search_dir) != export_root:
+            raise HTTPException(status_code=400, detail="无效的会话ID")
     else:
+        # 兼容旧版无 session_id 的直接导出接口，但禁止进入任何会话子目录。
+        search_dir = export_root
 
-        # 4. 模糊匹配：尝试Unicode标准化 + 不带扩展名匹配
-
-        found = False
-
-
-
-        # 方法1：NFC/NFD Unicode标准化
-
-        norm_filename = unicodedata.normalize('NFC', safe_filename)
-
-        # 先搜子目录
-
-        if os.path.exists(export_root):
-
-            for item in os.listdir(export_root):
-
-                search_dir = os.path.join(export_root, item) if os.path.isdir(os.path.join(export_root, item)) else export_root
-
-                norm_path = os.path.join(search_dir, norm_filename)
-
-                if os.path.exists(norm_path):
-
-                    file_path = norm_path
-
-                    safe_filename = norm_filename
-
-                    found = True
-
-                    logger.info(f"[导出下载] 通过Unicode标准化匹配成功: {safe_filename}")
-
-                    break
+    file_path = os.path.realpath(os.path.join(search_dir, safe_filename))
+    if os.path.dirname(file_path) != search_dir:
+        raise HTTPException(status_code=400, detail="无效的导出文件名")
 
 
 
-        # 方法2：遍历所有目录做模糊匹配（忽略Unicode差异）
+    if not os.path.isfile(file_path) and os.path.isdir(search_dir):
+        requested_nfc = unicodedata.normalize("NFC", safe_filename)
+        for existing_file in os.listdir(search_dir):
+            existing_path = os.path.realpath(os.path.join(search_dir, existing_file))
+            if (
+                os.path.dirname(existing_path) == search_dir
+                and os.path.isfile(existing_path)
+                and unicodedata.normalize("NFC", existing_file) == requested_nfc
+            ):
+                file_path = existing_path
+                safe_filename = existing_file
+                break
 
-        if not found and os.path.exists(export_root):
-
-            base_name = os.path.splitext(safe_filename)[0]
-
-            # 遍历根目录和所有子目录
-
-            search_dirs = [export_root]
-
-            for item in os.listdir(export_root):
-
-                sub = os.path.join(export_root, item)
-
-                if os.path.isdir(sub):
-
-                    search_dirs.append(sub)
-
-
-
-            for search_dir in search_dirs:
-
-                if not os.path.exists(search_dir):
-
-                    continue
-
-                for existing_file in os.listdir(search_dir):
-
-                    existing_path = os.path.join(search_dir, existing_file)
-
-                    if not os.path.isfile(existing_path):
-
-                        continue
-
-                    existing_base = os.path.splitext(existing_file)[0]
-
-                    # 比较Unicode标准化后的文件名
-
-                    if (unicodedata.normalize('NFC', existing_base) == unicodedata.normalize('NFC', base_name)
-
-                        and os.path.splitext(safe_filename)[1].lower() == os.path.splitext(existing_file)[1].lower()):
-
-                        file_path = existing_path
-
-                        safe_filename = existing_file
-
-                        found = True
-
-                        logger.info(f"[导出下载] 通过模糊匹配找到文件: {existing_file} (请求: {decoded_filename})")
-
-                        break
-
-                if found:
-
-                    break
-
-
-
-        if not found:
-
-            # 记录目录中现有文件，帮助调试
-
-            existing_files = []
-
-            if os.path.exists(export_root):
-
-                for item in os.listdir(export_root):
-
-                    sub = os.path.join(export_root, item)
-
-                    if os.path.isdir(sub):
-
-                        existing_files.extend([f"{item}/{f}" for f in os.listdir(sub) if os.path.isfile(os.path.join(sub, f))])
-
-                    elif os.path.isfile(sub):
-
-                        existing_files.append(item)
-
-            logger.warning(f"[导出下载] 文件未找到! 请求文件名: {safe_filename}, 目录中现有文件: {existing_files[:10]}")
-
-            raise HTTPException(status_code=404, detail=f"导出文档 {safe_filename} 不存在")
+    if not os.path.isfile(file_path):
+        logger.warning(
+            "[导出下载] 文件未找到: session=%s, filename=%s",
+            session_id or "legacy-root",
+            safe_filename,
+        )
+        raise HTTPException(status_code=404, detail=f"导出文档 {safe_filename} 不存在")
 
 
 
