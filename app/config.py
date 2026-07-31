@@ -36,7 +36,6 @@ AVAILABLE_MODELS = [
     {"id": "DeepSeek-V4-Pro", "name": "Deepseek-V4-Pro", "desc": "DeepSeek专业版，火山引擎"},
     {"id": "DeepSeek-V4-Flash", "name": "Deepseek-V4-Flash", "desc": "DeepSeek快速版，性价比高"},
     # 豆包系列（火山引擎）
-    {"id": "Doubao-Seed-2.1-pro", "name": "Doubao-Seed-2.1-Pro", "desc": "豆包专业版，火山引擎"},
     {"id": "Doubao-Seed-2.1-turbo", "name": "Doubao-Seed-2.1-Turbo", "desc": "豆包高速版，火山引擎"},
     # GLM 系列（火山引擎Ark，与豆包/DeepSeek共用套餐）
     {"id": "glm-5.2", "name": "GLM-5.2", "desc": "GLM旗舰，火山引擎Ark"},
@@ -63,7 +62,6 @@ FAST_MODELS = {"DeepSeek-V4-Flash"}
 VOLCENGINE_MODELS = {
     "DeepSeek-V4-Pro",
     "DeepSeek-V4-Flash",
-    "Doubao-Seed-2.1-pro",
     "Doubao-Seed-2.1-turbo",
     "glm-5.2",
 }
