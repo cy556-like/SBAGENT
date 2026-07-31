@@ -90,7 +90,7 @@ class RegressionContracts(unittest.TestCase):
         self.assertLess(glm_pos, qwen_pos)
         fallback_block = config[
             config.index("AUTO_MODEL_FALLBACK_CHAIN"):
-            config.index("# 显式指定 .env 路径")
+            config.index("MODEL_FALLBACK_CHAINS")
         ]
         self.assertNotIn('"mimo-v2.5-pro"', fallback_block)
         self.assertNotIn('"kimi-k3"', fallback_block)
@@ -118,11 +118,22 @@ class RegressionContracts(unittest.TestCase):
         self.assertIn('ARK_STANDARD_MODELS = {"doubao-seed-2-1-pro-260628"}', config)
         self.assertIn("火山方舟标准模型未配置 ARK_API_KEY", core)
         self.assertIn("is_model_quota_error", routes)
-        self.assertIn("selected_model == AUTO_MODEL_ID", routes)
+        self.assertIn("candidates = _model_candidates(selected_model)", routes)
         self.assertIn("has_next and not emitted_token and is_quota_event", routes)
         self.assertIn("if has_next and not emitted_token and is_model_quota_error(exc)", routes)
         self.assertNotIn("yield {\"type\": \"model_switch\"", routes)
         self.assertIn("千问模型未配置 QWEN_API_KEY", core)
+        self.assertIn(
+            '"doubao-seed-2-1-pro-260628": (',
+            config,
+        )
+        self.assertIn(
+            '"qwen3.7-plus": (\n'
+            '        "qwen3.7-plus",\n'
+            '        "glm-5.2",\n'
+            '        "kimi-k3",',
+            config,
+        )
 
     def test_pdf_loader_has_text_fallback_ocr_and_persistent_cache(self):
         rag = read("app/rag/document.py")
@@ -204,7 +215,7 @@ class RegressionContracts(unittest.TestCase):
 
         namespace = {
             "AUTO_MODEL_ID": "auto",
-            "_auto_model_candidates": lambda: ("glm", "mimo", "kimi"),
+            "_model_candidates": lambda selected: (selected,),
             "get_user_model": lambda _username: "glm",
             "is_model_quota_error": lambda _value: False,
             "logger": logging.getLogger("stream-context-regression"),
@@ -254,7 +265,7 @@ class RegressionContracts(unittest.TestCase):
 
         namespace = {
             "AUTO_MODEL_ID": "auto",
-            "_auto_model_candidates": lambda: ("glm", "mimo", "kimi"),
+            "_model_candidates": lambda _selected: ("glm", "mimo", "kimi"),
             "get_user_model": lambda _username: "auto",
             "is_model_quota_error": lambda value: "quota" in str(value).lower(),
             "logger": logging.getLogger("auto-stream-regression"),
@@ -268,6 +279,65 @@ class RegressionContracts(unittest.TestCase):
 
             async def events():
                 if model_id in {"glm", "mimo"}:
+                    yield {"type": "error", "content": "quota exhausted"}
+                else:
+                    yield {"type": "token", "content": "Kimi OK"}
+
+            return events()
+
+        async def scenario():
+            return [
+                item
+                async for item in stream_wrapper("adminsubao", source)
+            ]
+
+        self.assertEqual(
+            asyncio.run(scenario()),
+            [{"type": "token", "content": "Kimi OK"}],
+        )
+
+    def test_explicit_model_stream_quota_failover_stays_silent(self):
+        routes = read("app/api/routes.py")
+        tree = ast.parse(routes)
+        function = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.AsyncFunctionDef)
+            and node.name == "_stream_with_user_model"
+        )
+        module = ast.fix_missing_locations(
+            ast.Module(body=[function], type_ignores=[])
+        )
+
+        active_model = contextvars.ContextVar(
+            "test_explicit_model",
+            default=None,
+        )
+
+        @contextlib.contextmanager
+        def use_model(model_id):
+            token = active_model.set(model_id)
+            try:
+                yield
+            finally:
+                active_model.reset(token)
+
+        namespace = {
+            "AUTO_MODEL_ID": "auto",
+            "_model_candidates": lambda _selected: ("qwen", "glm", "kimi"),
+            "get_user_model": lambda _username: "qwen",
+            "is_model_quota_error": lambda value: "quota" in str(value).lower(),
+            "logger": logging.getLogger("explicit-stream-regression"),
+            "use_model": use_model,
+        }
+        exec(compile(module, "routes-explicit-test", "exec"), namespace)
+        stream_wrapper = namespace["_stream_with_user_model"]
+
+        def source():
+            model_id = active_model.get()
+
+            async def events():
+                if model_id in {"qwen", "glm"}:
                     yield {"type": "error", "content": "quota exhausted"}
                 else:
                     yield {"type": "token", "content": "Kimi OK"}

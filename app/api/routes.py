@@ -175,8 +175,9 @@ from app.memory.manager import (
 from app.config import (
     settings, AVAILABLE_MODELS, get_effective_model,
     get_user_model, set_user_model, use_model,
-    AUTO_MODEL_ID, AUTO_MODEL_FALLBACK_CHAIN,
-    VOLCENGINE_MODELS, QWEN_MODELS, MIMO_MODELS, KIMI_MODELS,
+    AUTO_MODEL_ID, MODEL_FALLBACK_CHAINS,
+    VOLCENGINE_MODELS, ARK_STANDARD_MODELS,
+    QWEN_MODELS, MIMO_MODELS, KIMI_MODELS,
     is_model_quota_error,
 )
 
@@ -189,36 +190,55 @@ from app.agent.storage import sync_agents as storage_sync_agents, load_agents as
 logger = logging.getLogger(__name__)
 
 
-def _auto_model_candidates():
-    """返回 Auto 可用候选；未配置密钥的备用供应商直接静默跳过。"""
+def _model_candidates(selected_model: str):
+    """返回所选模型的容灾链；未配置密钥的备用供应商静默跳过。"""
+    chain = MODEL_FALLBACK_CHAINS.get(selected_model, (selected_model,))
     candidates = []
-    for model_id in AUTO_MODEL_FALLBACK_CHAIN:
+    for index, model_id in enumerate(chain):
+        # 明确选择的首个模型保留，让缺少主配置时返回准确错误；
+        # Auto 和后续备用模型才允许因未配置密钥而跳过。
+        keep_unconfigured_primary = selected_model != AUTO_MODEL_ID and index == 0
+        if (
+            model_id in ARK_STANDARD_MODELS
+            and not settings.ARK_API_KEY
+            and not keep_unconfigured_primary
+        ):
+            logger.warning("模型容灾跳过火山方舟标准 API：服务器未配置 ARK_API_KEY")
+            continue
         if model_id in VOLCENGINE_MODELS and not settings.DEEPSEEK_API_KEY:
-            logger.warning("Auto 容灾跳过火山引擎：服务器未配置 DEEPSEEK_API_KEY")
+            if keep_unconfigured_primary:
+                candidates.append(model_id)
+                continue
+            logger.warning("模型容灾跳过火山引擎：服务器未配置 DEEPSEEK_API_KEY")
             continue
         if model_id in QWEN_MODELS and not settings.QWEN_API_KEY:
-            logger.warning("Auto 容灾跳过千问：服务器未配置 QWEN_API_KEY")
+            if keep_unconfigured_primary:
+                candidates.append(model_id)
+                continue
+            logger.warning("模型容灾跳过千问：服务器未配置 QWEN_API_KEY")
             continue
         if model_id in MIMO_MODELS and not settings.MIMO_API_KEY:
-            logger.warning("Auto 容灾跳过 MiMo：服务器未配置 MIMO_API_KEY")
+            if keep_unconfigured_primary:
+                candidates.append(model_id)
+                continue
+            logger.warning("模型容灾跳过 MiMo：服务器未配置 MIMO_API_KEY")
             continue
         if model_id in KIMI_MODELS and not settings.MOONSHOT_API_KEY:
-            logger.warning("Auto 容灾跳过 Kimi：服务器未配置 MOONSHOT_API_KEY")
+            if keep_unconfigured_primary:
+                candidates.append(model_id)
+                continue
+            logger.warning("模型容灾跳过 Kimi：服务器未配置 MOONSHOT_API_KEY")
             continue
         candidates.append(model_id)
     return tuple(candidates)
 
 
 def _chat_with_user_model(username: str, *args, **kwargs):
-    """绑定账号模型；Auto 仅在额度类错误时按候选顺序静默容灾。"""
+    """绑定账号模型；按所选模型的配置链处理额度类静默容灾。"""
     selected_model = get_user_model(username)
-    candidates = (
-        _auto_model_candidates()
-        if selected_model == AUTO_MODEL_ID
-        else (selected_model,)
-    )
+    candidates = _model_candidates(selected_model)
     if not candidates:
-        raise RuntimeError("Auto 模式没有可用的模型配置")
+        raise RuntimeError(f"模型 {selected_model} 没有可用的调用配置")
 
     last_error = None
     for index, model_id in enumerate(candidates):
@@ -231,22 +251,18 @@ def _chat_with_user_model(username: str, *args, **kwargs):
             if not (has_next and is_model_quota_error(exc)):
                 raise
             logger.warning(
-                "Auto 模式模型额度不可用，后端静默尝试下一候选：%s",
+                "模型额度不可用，后端静默尝试下一候选：%s",
                 model_id,
             )
     raise last_error
 
 
 async def _stream_with_user_model(username: str, generator_factory):
-    """绑定流式请求模型；Auto 额度容灾不向前端发送切换或中间错误。"""
+    """绑定流式请求模型；额度容灾不向前端发送切换或中间错误。"""
     selected_model = get_user_model(username)
-    candidates = (
-        _auto_model_candidates()
-        if selected_model == AUTO_MODEL_ID
-        else (selected_model,)
-    )
+    candidates = _model_candidates(selected_model)
     if not candidates:
-        raise RuntimeError("Auto 模式没有可用的模型配置")
+        raise RuntimeError(f"模型 {selected_model} 没有可用的调用配置")
 
     for index, model_id in enumerate(candidates):
         has_next = index + 1 < len(candidates)
@@ -284,7 +300,7 @@ async def _stream_with_user_model(username: str, generator_factory):
                 if has_next and not emitted_token and is_quota_event:
                     retry_next = True
                     logger.warning(
-                        "Auto 模式模型额度不可用，后端静默尝试下一候选：%s",
+                        "模型额度不可用，后端静默尝试下一候选：%s",
                         model_id,
                     )
                     break
@@ -295,7 +311,7 @@ async def _stream_with_user_model(username: str, generator_factory):
             if has_next and not emitted_token and is_model_quota_error(exc):
                 retry_next = True
                 logger.warning(
-                    "Auto 模式模型额度不可用，后端静默尝试下一候选：%s",
+                    "模型额度不可用，后端静默尝试下一候选：%s",
                     model_id,
                 )
             else:

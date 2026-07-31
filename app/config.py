@@ -22,6 +22,27 @@ AUTO_MODEL_FALLBACK_CHAIN = (
     "glm-5.2",
     "qwen3.7-max",
 )
+MODEL_FALLBACK_CHAINS = {
+    AUTO_MODEL_ID: AUTO_MODEL_FALLBACK_CHAIN,
+    # 豆包 Pro 先切同系列 Turbo，再进入千问、GLM、Kimi 的跨供应商容灾链。
+    "doubao-seed-2-1-pro-260628": (
+        "doubao-seed-2-1-pro-260628",
+        "Doubao-Seed-2.1-turbo",
+        "qwen3.7-max",
+        "glm-5.2",
+        "kimi-k3",
+    ),
+    "qwen3.7-max": (
+        "qwen3.7-max",
+        "glm-5.2",
+        "kimi-k3",
+    ),
+    "qwen3.7-plus": (
+        "qwen3.7-plus",
+        "glm-5.2",
+        "kimi-k3",
+    ),
+}
 
 # 显式指定 .env 路径（项目根目录），避免 uvicorn 启动目录不是项目根时找不到 .env
 _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
