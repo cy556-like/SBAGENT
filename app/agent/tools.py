@@ -1041,11 +1041,15 @@ def generate_8d_report_tool(
         if not os.path.exists(script_path):
             return f"【8D报告生成失败】未找到脚本: {script_path}。请确认 skills/8d-skill/scripts/generate_8d.py 已部署。"
 
-        # 输出目录：data/export/（根目录，不走 session_id 子目录）
-        # 原因：下载端点 /api/v1/documents/export-download/{filename} 会先搜子目录再搜根目录
-        # 但如果 session_id 不为空，文件存在子目录里，下载端点遍历子目录可能因各种原因找不到
-        # 8D 报告文件直接存根目录，下载端点的"根目录查找"能 100% 命中
-        export_dir = os.path.join(settings.DATA_DIR, "export")
+        # 与普通 Word/Excel 导出保持一致，按 session_id 隔离。
+        # 不能写入共享 export 根目录，否则并发生成同名报告时会互相覆盖，
+        # 飞书机器人也可能把另一会话的文件发送给当前用户。
+        session_id = get_current_session_id()
+        export_dir = (
+            os.path.join(settings.DATA_DIR, "export", session_id)
+            if session_id
+            else os.path.join(settings.DATA_DIR, "export")
+        )
         os.makedirs(export_dir, exist_ok=True)
 
         # 构造命令
@@ -1409,8 +1413,13 @@ def generate_fmea_report_tool(
         if not os.path.exists(script_path):
             return f"【FMEA报告生成失败】未找到脚本: {script_path}。请确认 skills/pfmea-dfmea-skill/scripts/generate_fmea.py 已部署（git submodule update --init --recursive）。"
 
-        # 输出目录：data/export/（与 8D 报告相同的下载端点）
-        export_dir = os.path.join(settings.DATA_DIR, "export")
+        # 与普通导出和 8D 报告一致，按 session_id 隔离，避免并发覆盖。
+        session_id = get_current_session_id()
+        export_dir = (
+            os.path.join(settings.DATA_DIR, "export", session_id)
+            if session_id
+            else os.path.join(settings.DATA_DIR, "export")
+        )
         os.makedirs(export_dir, exist_ok=True)
 
         # 构造命令
