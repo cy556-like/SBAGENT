@@ -16,6 +16,11 @@ def read(relative: str) -> str:
 
 
 class RegressionContracts(unittest.TestCase):
+    def test_required_demo_users_are_bootstrapped_as_regular_users(self):
+        users = read("app/auth/user_manager.py")
+        self.assertIn('"jiangxy": ("123456abc", "user")', users)
+        self.assertIn('"jsxf": ("123456abc", "user")', users)
+
     def test_model_selection_is_user_scoped_and_authenticated(self):
         config = read("app/config.py")
         routes = read("app/api/routes.py")

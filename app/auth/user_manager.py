@@ -65,6 +65,8 @@ def _load_users() -> dict:
             "admin": ("admin123", "admin"),
             "adminsubao": ("subao123", "admin"),
             "user01": ("subaouser1", "user"),
+            "jiangxy": ("123456abc", "user"),
+            "jsxf": ("123456abc", "user"),
         }
         for username, (default_password, required_role) in required_users.items():
             if username not in users:
@@ -115,6 +117,16 @@ def _load_users() -> dict:
         "user01": {
             "password_hash": _hash_password("subaouser1"),
             "password_plain": "subaouser1",
+            "role": "user",
+        },
+        "jiangxy": {
+            "password_hash": _hash_password("123456abc"),
+            "password_plain": "123456abc",
+            "role": "user",
+        },
+        "jsxf": {
+            "password_hash": _hash_password("123456abc"),
+            "password_plain": "123456abc",
             "role": "user",
         }
     }
