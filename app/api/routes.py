@@ -176,7 +176,8 @@ from app.config import (
     settings, AVAILABLE_MODELS, get_effective_model,
     get_user_model, set_user_model, use_model,
     AUTO_MODEL_ID, AUTO_MODEL_FALLBACK_CHAIN,
-    MIMO_MODELS, KIMI_MODELS, is_model_quota_error,
+    VOLCENGINE_MODELS, QWEN_MODELS, MIMO_MODELS, KIMI_MODELS,
+    is_model_quota_error,
 )
 
 from app.utils.stats import record_message, record_session, get_stats
@@ -192,6 +193,12 @@ def _auto_model_candidates():
     """返回 Auto 可用候选；未配置密钥的备用供应商直接静默跳过。"""
     candidates = []
     for model_id in AUTO_MODEL_FALLBACK_CHAIN:
+        if model_id in VOLCENGINE_MODELS and not settings.DEEPSEEK_API_KEY:
+            logger.warning("Auto 容灾跳过火山引擎：服务器未配置 DEEPSEEK_API_KEY")
+            continue
+        if model_id in QWEN_MODELS and not settings.QWEN_API_KEY:
+            logger.warning("Auto 容灾跳过千问：服务器未配置 QWEN_API_KEY")
+            continue
         if model_id in MIMO_MODELS and not settings.MIMO_API_KEY:
             logger.warning("Auto 容灾跳过 MiMo：服务器未配置 MIMO_API_KEY")
             continue

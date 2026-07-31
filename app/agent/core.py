@@ -479,11 +479,15 @@ def create_llm(deep_think: bool = False, fast_mode: bool = False, model_override
     # [GLM] 检测是否为GLM模型，使用阿里云百炼平台（兼容模式代理智谱模型）
     is_glm = model in GLM_MODELS
     
-    if is_volcengine and settings.DEEPSEEK_API_KEY:
+    if is_volcengine:
+        if not settings.DEEPSEEK_API_KEY:
+            raise RuntimeError("火山引擎模型未配置 DEEPSEEK_API_KEY，请在服务器 .env 中配置后重启服务")
         api_key = settings.DEEPSEEK_API_KEY
         base_url = settings.DEEPSEEK_BASE_URL
         logger.info(f"火山引擎模型检测到（{model}），使用火山引擎 Coding API: {base_url}")
-    elif is_qwen and settings.QWEN_API_KEY:
+    elif is_qwen:
+        if not settings.QWEN_API_KEY:
+            raise RuntimeError("千问模型未配置 QWEN_API_KEY，请在服务器 .env 中配置后重启服务")
         api_key = settings.QWEN_API_KEY
         base_url = settings.QWEN_BASE_URL
         logger.info(f"千问模型检测到（{model}），使用阿里云 DashScope API: {base_url}")

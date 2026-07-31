@@ -20,8 +20,7 @@ AUTO_MODEL_ID = "auto"
 AUTO_MODEL_TARGET = "glm-5.2"
 AUTO_MODEL_FALLBACK_CHAIN = (
     "glm-5.2",
-    "mimo-v2.5-pro",
-    "kimi-k3",
+    "qwen3.7-max",
 )
 
 # 显式指定 .env 路径（项目根目录），避免 uvicorn 启动目录不是项目根时找不到 .env
@@ -31,18 +30,19 @@ if not load_dotenv(_env_path):
 
 # 可用的 LLM 模型列表
 AVAILABLE_MODELS = [
-    # 自动模式（默认）：优先 GLM-5.2，额度/限流异常时静默切换 MiMo、Kimi。
+    # 自动模式（默认）：优先 GLM-5.2，额度/限流异常时静默切换 Qwen3.7-Max。
     {"id": AUTO_MODEL_ID, "name": "Auto", "desc": "自动选择最合适的大模型"},
     # DeepSeek 系列（火山引擎）
-    {"id": "DeepSeek-V4-Flash", "name": "DeepSeek-V4-Flash", "desc": "DeepSeek快速版，性价比高"},
+    {"id": "DeepSeek-V4-Pro", "name": "Deepseek-V4-Pro", "desc": "DeepSeek专业版，火山引擎"},
+    {"id": "DeepSeek-V4-Flash", "name": "Deepseek-V4-Flash", "desc": "DeepSeek快速版，性价比高"},
+    # 豆包系列（火山引擎）
+    {"id": "Doubao-Seed-2.1-pro", "name": "Doubao-Seed-2.1-Pro", "desc": "豆包专业版，火山引擎"},
+    {"id": "Doubao-Seed-2.1-turbo", "name": "Doubao-Seed-2.1-Turbo", "desc": "豆包高速版，火山引擎"},
     # GLM 系列（火山引擎Ark，与豆包/DeepSeek共用套餐）
     {"id": "glm-5.2", "name": "GLM-5.2", "desc": "GLM旗舰，火山引擎Ark"},
-    # 豆包系列（火山引擎）
-    {"id": "Doubao-Seed-2.0-pro", "name": "Doubao-Seed-2.0-Pro", "desc": "豆包旗舰，火山引擎"},
     # 千问系列（阿里云）
+    {"id": "qwen3.7-max", "name": "Qwen3.7-MAX", "desc": "千问高能力旗舰，阿里云DashScope"},
     {"id": "qwen3.7-plus", "name": "Qwen3.7-Plus", "desc": "千问旗舰，阿里云DashScope"},
-    # MiMo系列（小米）
-    {"id": "mimo-v2.5-pro", "name": "MiMo-V2.5-Pro", "desc": "小米旗舰，MiMo推理模型"},
     # Kimi 系列（Moonshot AI）
     {"id": "kimi-k3", "name": "Kimi K3", "desc": "Kimi旗舰推理模型，Moonshot API"},
 ]
@@ -60,13 +60,19 @@ VISION_BASE_URL: str = os.getenv("VISION_BASE_URL", "https://open.bigmodel.cn/ap
 FAST_MODELS = {"DeepSeek-V4-Flash"}
 
 # 火山引擎模型列表（走火山引擎Ark Coding API，包括豆包/DeepSeek/GLM）
-VOLCENGINE_MODELS = {"DeepSeek-V4-Flash", "Doubao-Seed-2.0-pro", "glm-5.2"}
+VOLCENGINE_MODELS = {
+    "DeepSeek-V4-Pro",
+    "DeepSeek-V4-Flash",
+    "Doubao-Seed-2.1-pro",
+    "Doubao-Seed-2.1-turbo",
+    "glm-5.2",
+}
 
 # DeepSeek 模型列表（兼容旧代码引用，走火山引擎Coding API）
-DEEPSEEK_MODELS = {"DeepSeek-V4-Flash"}
+DEEPSEEK_MODELS = {"DeepSeek-V4-Pro", "DeepSeek-V4-Flash"}
 
 # 千问模型列表（走阿里云DashScope API）
-QWEN_MODELS = {"qwen3.7-plus"}
+QWEN_MODELS = {"qwen3.7-max", "qwen3.7-plus"}
 
 # MiMo模型列表（走小米MiMo API）
 MIMO_MODELS = {"mimo-v2.5-pro"}
@@ -101,7 +107,7 @@ class Settings:
     DEEPSEEK_BASE_URL: str = os.getenv("DEEPSEEK_BASE_URL", "https://ark.cn-beijing.volces.com/api/coding/v3")
 
     # 千问独立配置（阿里云DashScope）
-    QWEN_API_KEY: str = os.getenv("QWEN_API_KEY", "")
+    QWEN_API_KEY: str = os.getenv("QWEN_API_KEY", os.getenv("DASHSCOPE_API_KEY", ""))
     QWEN_BASE_URL: str = os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
 
     # MiMo独立配置（小米）
@@ -275,6 +281,18 @@ def is_model_quota_error(error) -> bool:
         "rate limit exceeded",
         "rate_limit_exceeded",
         "too many requests",
+        "arrearage",
+        "allocationquota.freetieronly",
+        "throttling.allocationquota",
+        "throttling.ratequota",
+        "prepaidbilloverdue",
+        "postpaidbilloverdue",
+        "commoditynotpurchased",
+        "allocated quota exceeded",
+        "hour allocated quota exceeded",
+        "week allocated quota exceeded",
+        "month allocated quota exceeded",
+        "usage allocated quota exceeded",
         "http status 429",
         "http 429",
         "status code 429",

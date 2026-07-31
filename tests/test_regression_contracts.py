@@ -86,16 +86,41 @@ class RegressionContracts(unittest.TestCase):
         core = read("app/agent/core.py")
 
         glm_pos = config.index('"glm-5.2"', config.index("AUTO_MODEL_FALLBACK_CHAIN"))
-        mimo_pos = config.index('"mimo-v2.5-pro"', glm_pos)
-        kimi_pos = config.index('"kimi-k3"', mimo_pos)
-        self.assertLess(glm_pos, mimo_pos)
-        self.assertLess(mimo_pos, kimi_pos)
+        qwen_pos = config.index('"qwen3.7-max"', glm_pos)
+        self.assertLess(glm_pos, qwen_pos)
+        fallback_block = config[
+            config.index("AUTO_MODEL_FALLBACK_CHAIN"):
+            config.index("# 显式指定 .env 路径")
+        ]
+        self.assertNotIn('"mimo-v2.5-pro"', fallback_block)
+        self.assertNotIn('"kimi-k3"', fallback_block)
+        available_block = config[
+            config.index("AVAILABLE_MODELS = ["):
+            config.index("# 支持图片分析的视觉模型列表")
+        ]
+        expected_names = (
+            '"name": "Auto"',
+            '"name": "Deepseek-V4-Pro"',
+            '"name": "Deepseek-V4-Flash"',
+            '"name": "Doubao-Seed-2.1-Pro"',
+            '"name": "Doubao-Seed-2.1-Turbo"',
+            '"name": "GLM-5.2"',
+            '"name": "Qwen3.7-MAX"',
+            '"name": "Qwen3.7-Plus"',
+            '"name": "Kimi K3"',
+        )
+        previous_position = -1
+        for model_name in expected_names:
+            position = available_block.index(model_name)
+            self.assertGreater(position, previous_position)
+            previous_position = position
+        self.assertNotIn('"name": "MiMo-', available_block)
         self.assertIn("is_model_quota_error", routes)
         self.assertIn("selected_model == AUTO_MODEL_ID", routes)
         self.assertIn("has_next and not emitted_token and is_quota_event", routes)
         self.assertIn("if has_next and not emitted_token and is_model_quota_error(exc)", routes)
         self.assertNotIn("yield {\"type\": \"model_switch\"", routes)
-        self.assertIn("MiMo 未配置 MIMO_API_KEY", core)
+        self.assertIn("千问模型未配置 QWEN_API_KEY", core)
 
     def test_pdf_loader_has_text_fallback_ocr_and_persistent_cache(self):
         rag = read("app/rag/document.py")
