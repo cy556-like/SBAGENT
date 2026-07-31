@@ -102,6 +102,7 @@ class RegressionContracts(unittest.TestCase):
             '"name": "Auto"',
             '"name": "Deepseek-V4-Pro"',
             '"name": "Deepseek-V4-Flash"',
+            '"name": "Doubao-Seed-2.1-Pro"',
             '"name": "Doubao-Seed-2.1-Turbo"',
             '"name": "GLM-5.2"',
             '"name": "Qwen3.7-MAX"',
@@ -113,8 +114,9 @@ class RegressionContracts(unittest.TestCase):
             position = available_block.index(model_name)
             self.assertGreater(position, previous_position)
             previous_position = position
-        self.assertNotIn('"name": "Doubao-Seed-2.1-Pro"', available_block)
         self.assertNotIn('"name": "MiMo-', available_block)
+        self.assertIn('ARK_STANDARD_MODELS = {"doubao-seed-2-1-pro-260628"}', config)
+        self.assertIn("火山方舟标准模型未配置 ARK_API_KEY", core)
         self.assertIn("is_model_quota_error", routes)
         self.assertIn("selected_model == AUTO_MODEL_ID", routes)
         self.assertIn("has_next and not emitted_token and is_quota_event", routes)

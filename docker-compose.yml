@@ -17,6 +17,9 @@ services:
       # DeepSeek / 豆包（火山引擎）
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL}
+      # 豆包 2.1 Pro（火山方舟标准 API）
+      - ARK_API_KEY=${ARK_API_KEY}
+      - ARK_BASE_URL=${ARK_BASE_URL}
       # 千问（阿里云）
       - QWEN_API_KEY=${QWEN_API_KEY}
       - QWEN_BASE_URL=${QWEN_BASE_URL}

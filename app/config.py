@@ -36,6 +36,7 @@ AVAILABLE_MODELS = [
     {"id": "DeepSeek-V4-Pro", "name": "Deepseek-V4-Pro", "desc": "DeepSeek专业版，火山引擎"},
     {"id": "DeepSeek-V4-Flash", "name": "Deepseek-V4-Flash", "desc": "DeepSeek快速版，性价比高"},
     # 豆包系列（火山引擎）
+    {"id": "doubao-seed-2-1-pro-260628", "name": "Doubao-Seed-2.1-Pro", "desc": "豆包专业版，火山方舟标准API"},
     {"id": "Doubao-Seed-2.1-turbo", "name": "Doubao-Seed-2.1-Turbo", "desc": "豆包高速版，火山引擎"},
     # GLM 系列（火山引擎Ark，与豆包/DeepSeek共用套餐）
     {"id": "glm-5.2", "name": "GLM-5.2", "desc": "GLM旗舰，火山引擎Ark"},
@@ -65,6 +66,9 @@ VOLCENGINE_MODELS = {
     "Doubao-Seed-2.1-turbo",
     "glm-5.2",
 }
+
+# 火山方舟标准 API 模型（走 /api/v3，与 Coding Plan 密钥和地址隔离）
+ARK_STANDARD_MODELS = {"doubao-seed-2-1-pro-260628"}
 
 # DeepSeek 模型列表（兼容旧代码引用，走火山引擎Coding API）
 DEEPSEEK_MODELS = {"DeepSeek-V4-Pro", "DeepSeek-V4-Flash"}
@@ -103,6 +107,10 @@ class Settings:
     # DeepSeek / 豆包 独立配置（火山引擎Ark）
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", os.getenv("LLM_API_KEY", ""))
     DEEPSEEK_BASE_URL: str = os.getenv("DEEPSEEK_BASE_URL", "https://ark.cn-beijing.volces.com/api/coding/v3")
+
+    # 火山方舟标准 API（Doubao-Seed-2.1-Pro 等不支持 Coding Plan 的模型）
+    ARK_API_KEY: str = os.getenv("ARK_API_KEY", "")
+    ARK_BASE_URL: str = os.getenv("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
 
     # 千问独立配置（阿里云DashScope）
     QWEN_API_KEY: str = os.getenv("QWEN_API_KEY", os.getenv("DASHSCOPE_API_KEY", ""))

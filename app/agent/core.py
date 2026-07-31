@@ -29,7 +29,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from app.config import settings, VISION_MODELS, DEFAULT_VISION_MODEL, VISION_API_KEY, VISION_BASE_URL, FAST_MODELS, DEEPSEEK_MODELS, VOLCENGINE_MODELS, QWEN_MODELS, MIMO_MODELS, KIMI_MODELS, GLM_MODELS, AUTO_MODEL_ID, resolve_model_id, get_active_model, is_model_quota_error
+from app.config import settings, VISION_MODELS, DEFAULT_VISION_MODEL, VISION_API_KEY, VISION_BASE_URL, FAST_MODELS, DEEPSEEK_MODELS, VOLCENGINE_MODELS, ARK_STANDARD_MODELS, QWEN_MODELS, MIMO_MODELS, KIMI_MODELS, GLM_MODELS, AUTO_MODEL_ID, resolve_model_id, get_active_model, is_model_quota_error
 from app.agent.tools import ALL_TOOLS, get_tools, set_current_agent_id, set_current_session_id, get_current_session_id, reset_search_count
 from app.agent.prompts import SYSTEM_PROMPT, SYSTEM_PROMPT_WITH_WEB_SEARCH, CHAT_SYSTEM_PROMPT, get_agent_keywords_section
 from app.agent.subagent_prompts import build_subagent_task
@@ -470,6 +470,8 @@ def create_llm(deep_think: bool = False, fast_mode: bool = False, model_override
     is_deepseek = model in DEEPSEEK_MODELS
     # [火山引擎] 检测是否为火山引擎模型（DeepSeek/豆包/GLM），使用 Coding API
     is_volcengine = model in VOLCENGINE_MODELS
+    # [火山方舟标准 API] 不支持 Coding Plan 的模型单独走 /api/v3
+    is_ark_standard = model in ARK_STANDARD_MODELS
     # [千问] 检测是否为千问模型，使用阿里云 DashScope API
     is_qwen = model in QWEN_MODELS
     # [MiMo] 检测是否为MiMo模型，使用小米API
@@ -479,7 +481,13 @@ def create_llm(deep_think: bool = False, fast_mode: bool = False, model_override
     # [GLM] 检测是否为GLM模型，使用阿里云百炼平台（兼容模式代理智谱模型）
     is_glm = model in GLM_MODELS
     
-    if is_volcengine:
+    if is_ark_standard:
+        if not settings.ARK_API_KEY:
+            raise RuntimeError("火山方舟标准模型未配置 ARK_API_KEY，请在服务器 .env 中配置后重启服务")
+        api_key = settings.ARK_API_KEY
+        base_url = settings.ARK_BASE_URL
+        logger.info(f"火山方舟标准模型检测到（{model}），使用 Ark API: {base_url}")
+    elif is_volcengine:
         if not settings.DEEPSEEK_API_KEY:
             raise RuntimeError("火山引擎模型未配置 DEEPSEEK_API_KEY，请在服务器 .env 中配置后重启服务")
         api_key = settings.DEEPSEEK_API_KEY
