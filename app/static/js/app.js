@@ -1835,7 +1835,12 @@ async function doRegister() {
     alert('注册功能已禁用，请联系管理员创建账号');
 }
 
-function doLogout() {
+async function doLogout() {
+    try {
+        await fetch('/api/v1/auth/logout', { method: 'POST' });
+    } catch (e) {
+        console.warn('清除服务器登录态失败', e);
+    }
     // 必须先终止旧账号的流式请求，防止回复继续写入下一账号的页面。
     stopGeneration();
     _chatListLoadSeq++;
@@ -2030,17 +2035,20 @@ async function restoreAuthenticatedView(targetState) {
 
 // ===== Auto-login with JWT token =====
 async function tryAutoLogin(targetState = readNavigationState()) {
-    const token = localStorage.getItem('authToken');
-    if (!token) return false;
+    let token = localStorage.getItem('authToken');
     try {
+        const headers = token ? {'Authorization': 'Bearer ' + token} : {};
         const resp = await fetchWithTimeout(
             '/api/v1/auth/me',
-            {headers: {'Authorization': 'Bearer ' + token}},
+            {headers},
             12000
         );
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         if (data.valid && data.username) {
+            token = data.token || token;
+            if (!token) throw new Error('认证响应缺少令牌');
+            localStorage.setItem('authToken', token);
             currentUser = data.username;
             loadAgentActiveChatIds();
             authToken = token;
@@ -3987,14 +3995,23 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // 刷新页面时验证现有登录令牌，并恢复刷新前所在的入口页、聊天页或知识库页。
     // 主动退出仍会清除令牌和页面状态。
-    const savedToken = localStorage.getItem('authToken');
-    if (savedToken) {
-        const loginModal = document.getElementById('loginModal');
-        if (loginModal) loginModal.classList.remove('show');
-        await tryAutoLogin(readNavigationState());
-    } else {
+    // Always check /auth/me: Feishu SSO uses an HttpOnly cookie on first load,
+    // while normal web login continues to use the existing local JWT.
+    const loginModal = document.getElementById('loginModal');
+    if (loginModal) loginModal.classList.remove('show');
+    const autoLoggedIn = await tryAutoLogin(readNavigationState());
+    if (!autoLoggedIn) {
         clearNavigationState();
         history.replaceState({page: 'login'}, '');
+        const feishuError = new URLSearchParams(window.location.search).get('feishu_error');
+        if (feishuError) {
+            const msg = document.getElementById('loginMsg');
+            if (msg) {
+                msg.textContent = `飞书免登录失败：${feishuError}`;
+                msg.className = 'msg-box error';
+            }
+            history.replaceState({page: 'login'}, '', window.location.pathname);
+        }
     }
 
     // Landing page: nav scroll & smooth scroll (宣传页已删除，跳过)

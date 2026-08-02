@@ -40,11 +40,11 @@ from typing import Optional
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Request, Query, Header
 
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse, Response, RedirectResponse
 
 from pydantic import BaseModel
 
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 
 
 
@@ -161,6 +161,16 @@ from app.rag.document import index_document, search_documents, list_indexed_docu
 from app.auth.user_manager import login_user, register_user, get_user_role, is_admin, list_all_users, delete_user, update_user_role, reset_user_password
 
 from app.auth.jwt_handler import create_token, verify_token, get_username_from_token, get_role_from_token
+
+from app.auth.feishu_sso import (
+    FeishuSSOError,
+    consume_oauth_state,
+    create_oauth_request,
+    exchange_code,
+    fetch_user_info,
+    is_enabled as feishu_sso_enabled,
+    resolve_internal_identity,
+)
 
 from app.memory.manager import (
 
@@ -410,6 +420,14 @@ def _record_request(path: str, duration: float, is_error: bool = False):
 
 # ===== JWT 认证依赖 =====
 
+def _request_auth_token(request: Request) -> str:
+    """Read JWT from the normal Bearer header or the secure Feishu SSO cookie."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]
+    return request.cookies.get(settings.FEISHU_SESSION_COOKIE, "")
+
+
 def get_current_user(request: Request) -> str:
 
     """
@@ -422,17 +440,10 @@ def get_current_user(request: Request) -> str:
 
     """
 
-    auth_header = request.headers.get("Authorization", "")
-
-    if auth_header.startswith("Bearer "):
-
-        token = auth_header[7:]
-
-        username = get_username_from_token(token)
-
-        if username:
-
-            return username
+    token = _request_auth_token(request)
+    username = get_username_from_token(token) if token else None
+    if username:
+        return username
 
     return ""
 
@@ -450,17 +461,10 @@ def require_auth(request: Request) -> str:
 
     """
 
-    auth_header = request.headers.get("Authorization", "")
-
-    if auth_header.startswith("Bearer "):
-
-        token = auth_header[7:]
-
-        username = get_username_from_token(token)
-
-        if username:
-
-            return username
+    token = _request_auth_token(request)
+    username = get_username_from_token(token) if token else None
+    if username:
+        return username
 
     raise HTTPException(status_code=401, detail="未认证，请重新登录")
 
@@ -477,9 +481,8 @@ def require_admin(request: Request) -> str:
     强制要求 JWT 认证且为管理员角色
     返回已认证的管理员用户名
     """
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
+    token = _request_auth_token(request)
+    if token:
         username = get_username_from_token(token)
         role = get_role_from_token(token)
         if username and role == "admin":
@@ -714,6 +717,65 @@ async def auth_login(req: LoginRequest):
         _record_request("/auth/login", time.time() - start)
 
 
+def _feishu_error_redirect(message: str) -> RedirectResponse:
+    return RedirectResponse(url=f"/?feishu_error={quote(message[:300])}", status_code=303)
+
+
+@router.get("/auth/feishu/start", summary="启动飞书网页免登")
+async def feishu_auth_start(request: Request, next: str = "/"):
+    """Start OAuth only when the browser has no valid SBAGENT session."""
+    token = _request_auth_token(request)
+    if token and verify_token(token):
+        safe_next = next if next.startswith("/") and not next.startswith("//") else "/"
+        return RedirectResponse(url=safe_next, status_code=303)
+    if not feishu_sso_enabled():
+        return _feishu_error_redirect("服务器尚未完整配置飞书免登录")
+    try:
+        _, authorize_url = create_oauth_request(next)
+        return RedirectResponse(url=authorize_url, status_code=302)
+    except FeishuSSOError as exc:
+        logger.warning("启动飞书免登失败: %s", exc)
+        return _feishu_error_redirect(str(exc))
+
+
+@router.get("/auth/feishu/callback", summary="飞书网页免登回调")
+async def feishu_auth_callback(
+    code: str = "",
+    state: str = "",
+    error: str = "",
+    error_description: str = "",
+):
+    """Verify Feishu identity, map it to an internal user and set a secure session."""
+    if error:
+        return _feishu_error_redirect(error_description or error or "用户取消飞书授权")
+    if not code or not state:
+        return _feishu_error_redirect("飞书登录回调缺少 code 或 state")
+    try:
+        verifier, next_path = consume_oauth_state(state)
+        access_token = await exchange_code(code, verifier)
+        user_info = await fetch_user_info(access_token)
+        username, role = resolve_internal_identity(user_info)
+        sbagent_token = create_token(username, role=role)
+        response = RedirectResponse(url=next_path, status_code=303)
+        response.set_cookie(
+            key=settings.FEISHU_SESSION_COOKIE,
+            value=sbagent_token,
+            max_age=86400 * 7,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+        logger.info("飞书用户免登成功: username=%s role=%s", username, role)
+        return response
+    except FeishuSSOError as exc:
+        logger.warning("飞书免登失败: %s", exc)
+        return _feishu_error_redirect(str(exc))
+    except Exception:
+        logger.exception("飞书免登出现未处理异常")
+        return _feishu_error_redirect("飞书免登录处理失败，请稍后重试")
+
+
 
 
 
@@ -737,13 +799,28 @@ async def auth_me(request: Request):
 
     try:
 
+        token = _request_auth_token(request)
         username = require_auth(request)
+        role = get_role_from_token(token) or "user"
 
-        return {"valid": True, "username": username}
+        return {"valid": True, "username": username, "role": role, "token": token}
 
     except HTTPException:
 
         return {"valid": False, "username": None}
+
+
+@router.post("/auth/logout", summary="退出当前登录")
+async def auth_logout():
+    response = Response(content='{"success":true}', media_type="application/json")
+    response.delete_cookie(
+        key=settings.FEISHU_SESSION_COOKIE,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
 
 
 

@@ -160,6 +160,13 @@ class Settings:
     APP_HOST: str = os.getenv("APP_HOST", "0.0.0.0")
     APP_PORT: int = int(os.getenv("APP_PORT", "8000"))
 
+    # Feishu web SSO. The App Secret is used server-side only.
+    FEISHU_APP_ID: str = os.getenv("FEISHU_APP_ID", "")
+    FEISHU_APP_SECRET: str = os.getenv("FEISHU_APP_SECRET", "")
+    FEISHU_REDIRECT_URI: str = os.getenv("FEISHU_REDIRECT_URI", "")
+    FEISHU_ACCOUNT_MAP_JSON: str = os.getenv("FEISHU_ACCOUNT_MAP_JSON", "")
+    FEISHU_SESSION_COOKIE: str = os.getenv("FEISHU_SESSION_COOKIE", "sbagent_session")
+
     # 数据目录
     DATA_DIR: str = os.getenv("DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"))
     DOCUMENTS_DIR: str = os.getenv("DOCUMENTS_DIR", os.path.join(DATA_DIR, "documents"))
