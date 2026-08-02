@@ -166,6 +166,17 @@ class Settings:
     FEISHU_REDIRECT_URI: str = os.getenv("FEISHU_REDIRECT_URI", "")
     FEISHU_ACCOUNT_MAP_JSON: str = os.getenv("FEISHU_ACCOUNT_MAP_JSON", "")
     FEISHU_SESSION_COOKIE: str = os.getenv("FEISHU_SESSION_COOKIE", "sbagent_session")
+    # Feishu organization directory synchronization. ``tenant_key`` may be
+    # omitted after at least one successful SSO login because it can then be
+    # discovered from the existing binding database.
+    FEISHU_TENANT_KEY: str = os.getenv("FEISHU_TENANT_KEY", "")
+    FEISHU_CONTACT_SYNC_ENABLED: bool = os.getenv(
+        "FEISHU_CONTACT_SYNC_ENABLED", "true"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    FEISHU_CONTACT_FULL_SCOPE_CONFIRMED: bool = os.getenv(
+        "FEISHU_CONTACT_FULL_SCOPE_CONFIRMED", "false"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    FEISHU_CONTACTS_DB: str = os.getenv("FEISHU_CONTACTS_DB", "")
 
     # 数据目录
     DATA_DIR: str = os.getenv("DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"))

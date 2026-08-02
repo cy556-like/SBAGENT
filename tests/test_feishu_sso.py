@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import sys
 import tempfile
 import types
@@ -92,6 +93,69 @@ class FeishuSSOTests(unittest.TestCase):
             {"tenant_key": "tenant", "open_id": "ou_admin", "name": "管理员"}
         )
         self.assertEqual(identity, ("adminsubao", "admin"))
+
+    def test_user_id_survives_open_id_change(self):
+        first = feishu_sso.resolve_internal_identity(
+            {"tenant_key": "tenant", "user_id": "u_stable", "open_id": "ou_old", "name": "张三"}
+        )
+        second = feishu_sso.resolve_internal_identity(
+            {"tenant_key": "tenant", "user_id": "u_stable", "open_id": "ou_new", "name": "张三"}
+        )
+        self.assertEqual(first, second)
+
+    def test_legacy_open_id_binding_migrates_without_username_change(self):
+        legacy = feishu_sso.resolve_internal_identity(
+            {"tenant_key": "tenant", "open_id": "ou_legacy", "name": "李四"}
+        )
+        migrated = feishu_sso.resolve_internal_identity(
+            {
+                "tenant_key": "tenant",
+                "user_id": "u_real",
+                "open_id": "ou_legacy",
+                "name": "李四",
+            }
+        )
+        self.assertEqual(legacy, migrated)
+
+    def test_existing_legacy_database_is_migrated_in_place(self):
+        db_path = Path(self.temp.name, "users", "feishu_sso.sqlite3")
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute(
+                "CREATE TABLE user_bindings(tenant_key TEXT NOT NULL, open_id TEXT NOT NULL, "
+                "username TEXT NOT NULL UNIQUE, role TEXT NOT NULL, display_name TEXT NOT NULL, "
+                "user_id TEXT NOT NULL, union_id TEXT NOT NULL, updated_at INTEGER NOT NULL, "
+                "PRIMARY KEY(tenant_key, open_id))"
+            )
+            conn.execute(
+                "INSERT INTO user_bindings VALUES(?,?,?,?,?,?,?,?)",
+                ("tenant", "ou_old", "fs_existing", "user", "王五", "", "", 1),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        identity = feishu_sso.resolve_internal_identity(
+            {
+                "tenant_key": "tenant",
+                "user_id": "u_real",
+                "open_id": "ou_old",
+                "name": "王五",
+            }
+        )
+        self.assertEqual(identity, ("fs_existing", "user"))
+        conn = sqlite3.connect(db_path)
+        try:
+            primary = [
+                row[1]
+                for row in sorted(
+                    (x for x in conn.execute("PRAGMA table_info(user_bindings)") if x[5]),
+                    key=lambda x: x[5],
+                )
+            ]
+        finally:
+            conn.close()
+        self.assertEqual(primary, ["tenant_key", "user_id"])
 
 
 if __name__ == "__main__":

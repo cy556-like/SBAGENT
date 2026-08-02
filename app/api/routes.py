@@ -169,6 +169,7 @@ from app.auth.feishu_sso import (
     exchange_code,
     fetch_user_info,
     is_enabled as feishu_sso_enabled,
+    is_username_active as feishu_username_active,
     resolve_internal_identity,
     with_sso_marker,
 )
@@ -443,7 +444,7 @@ def get_current_user(request: Request) -> str:
 
     token = _request_auth_token(request)
     username = get_username_from_token(token) if token else None
-    if username:
+    if username and feishu_username_active(username):
         return username
 
     return ""
@@ -464,7 +465,7 @@ def require_auth(request: Request) -> str:
 
     token = _request_auth_token(request)
     username = get_username_from_token(token) if token else None
-    if username:
+    if username and feishu_username_active(username):
         return username
 
     raise HTTPException(status_code=401, detail="未认证，请重新登录")
@@ -486,6 +487,8 @@ def require_admin(request: Request) -> str:
     if token:
         username = get_username_from_token(token)
         role = get_role_from_token(token)
+        if username and not feishu_username_active(username):
+            raise HTTPException(status_code=401, detail="该飞书员工已离职或停用")
         if username and role == "admin":
             return username
         elif username:
