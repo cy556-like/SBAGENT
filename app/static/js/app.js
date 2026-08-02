@@ -12,6 +12,7 @@
 let currentUser = null;
 let userRole = null;
 let authToken = null;
+let authSource = 'web';
 let selectedFile = null;
 let selectedFileBase64 = null;
 let isLoading = false;
@@ -1836,10 +1837,13 @@ async function doRegister() {
 }
 
 async function doLogout() {
-    try {
-        await fetch('/api/v1/auth/logout', { method: 'POST' });
-    } catch (e) {
-        console.warn('清除服务器登录态失败', e);
+    const loggingOutSource = authSource;
+    if (loggingOutSource === 'feishu') {
+        try {
+            await fetch('/api/v1/auth/logout', { method: 'POST' });
+        } catch (e) {
+            console.warn('清除服务器登录态失败', e);
+        }
     }
     // 必须先终止旧账号的流式请求，防止回复继续写入下一账号的页面。
     stopGeneration();
@@ -1852,8 +1856,11 @@ async function doLogout() {
     if (skillBar) skillBar.style.display = 'none';
     modeChatId = { agent: null, chat: null };
     currentUser = null; userRole = null; authToken = null; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; currentWorkspaceId = null; agentKbUploadMode = false;
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('userRole');
+    if (loggingOutSource !== 'feishu') {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('userRole');
+    }
+    authSource = 'web';
     clearNavigationState();
     // Hide KB page if open
     const kbPage = document.getElementById('kbPage');
@@ -1970,8 +1977,11 @@ window.addEventListener('popstate', async function(e) {
         if (currentUser) {
             // Clear session but don't push another history entry
             currentUser = null; userRole = null; authToken = null; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; currentWorkspaceId = null; agentKbUploadMode = false;
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('userRole');
+            if (authSource !== 'feishu') {
+                localStorage.removeItem('authToken');
+                localStorage.removeItem('userRole');
+            }
+            authSource = 'web';
             clearNavigationState();
             if (kbPage) kbPage.style.display = 'none';
             if (agentPortalPage) agentPortalPage.style.display = 'none';
@@ -2034,8 +2044,13 @@ async function restoreAuthenticatedView(targetState) {
 }
 
 // ===== Auto-login with JWT token =====
-async function tryAutoLogin(targetState = readNavigationState()) {
-    let token = localStorage.getItem('authToken');
+async function tryAutoLogin(targetState = readNavigationState(), options = {}) {
+    const preferCookie = options.preferCookie === true;
+    const persistWebToken = !preferCookie;
+    let token = preferCookie ? null : localStorage.getItem('authToken');
+    // A normal browser visit must not silently inherit a Feishu cookie.  Only
+    // the callback/start marker is allowed to select the SSO identity.
+    if (!preferCookie && !token) return false;
     try {
         const headers = token ? {'Authorization': 'Bearer ' + token} : {};
         const resp = await fetchWithTimeout(
@@ -2048,12 +2063,13 @@ async function tryAutoLogin(targetState = readNavigationState()) {
         if (data.valid && data.username) {
             token = data.token || token;
             if (!token) throw new Error('认证响应缺少令牌');
-            localStorage.setItem('authToken', token);
+            if (persistWebToken) localStorage.setItem('authToken', token);
             currentUser = data.username;
             loadAgentActiveChatIds();
             authToken = token;
-            userRole = data.role || localStorage.getItem('userRole') || 'user';
-            localStorage.setItem('userRole', userRole);
+            authSource = preferCookie ? 'feishu' : 'web';
+            userRole = data.role || (persistWebToken ? localStorage.getItem('userRole') : null) || 'user';
+            if (persistWebToken) localStorage.setItem('userRole', userRole);
             // 初始化完成前保持聊天页隐藏，避免默认标题/欢迎页短暂闪现
             document.getElementById('chatPage').style.display = 'none';
             document.getElementById('headerUserName').textContent = userRole === 'admin'
@@ -2077,8 +2093,10 @@ async function tryAutoLogin(targetState = readNavigationState()) {
             return true;
         }
     } catch (e) { console.warn('自动登录失败', e); }
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('userRole');
+    if (persistWebToken) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('userRole');
+    }
     clearNavigationState();
     // 自动登录失败：确保登录页可见
     document.getElementById('loginModal').classList.add('show');
@@ -3999,7 +4017,17 @@ document.addEventListener('DOMContentLoaded', async function() {
     // while normal web login continues to use the existing local JWT.
     const loginModal = document.getElementById('loginModal');
     if (loginModal) loginModal.classList.remove('show');
-    const autoLoggedIn = await tryAutoLogin(readNavigationState());
+    const pageUrl = new URL(window.location.href);
+    const isFeishuSsoEntry = pageUrl.searchParams.get('feishu_sso') === '1';
+    if (isFeishuSsoEntry) {
+        pageUrl.searchParams.delete('feishu_sso');
+        const cleanUrl = pageUrl.pathname + (pageUrl.search ? pageUrl.search : '') + (pageUrl.hash || '');
+        history.replaceState(history.state, '', cleanUrl);
+    }
+    const autoLoggedIn = await tryAutoLogin(
+        readNavigationState(),
+        {preferCookie: isFeishuSsoEntry}
+    );
     if (!autoLoggedIn) {
         clearNavigationState();
         history.replaceState({page: 'login'}, '');

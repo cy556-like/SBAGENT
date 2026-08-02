@@ -170,6 +170,7 @@ from app.auth.feishu_sso import (
     fetch_user_info,
     is_enabled as feishu_sso_enabled,
     resolve_internal_identity,
+    with_sso_marker,
 )
 
 from app.memory.manager import (
@@ -727,7 +728,7 @@ async def feishu_auth_start(request: Request, next: str = "/"):
     token = _request_auth_token(request)
     if token and verify_token(token):
         safe_next = next if next.startswith("/") and not next.startswith("//") else "/"
-        return RedirectResponse(url=safe_next, status_code=303)
+        return RedirectResponse(url=with_sso_marker(safe_next), status_code=303)
     if not feishu_sso_enabled():
         return _feishu_error_redirect("服务器尚未完整配置飞书免登录")
     try:
@@ -756,7 +757,7 @@ async def feishu_auth_callback(
         user_info = await fetch_user_info(access_token)
         username, role = resolve_internal_identity(user_info)
         sbagent_token = create_token(username, role=role)
-        response = RedirectResponse(url=next_path, status_code=303)
+        response = RedirectResponse(url=with_sso_marker(next_path), status_code=303)
         response.set_cookie(
             key=settings.FEISHU_SESSION_COOKIE,
             value=sbagent_token,

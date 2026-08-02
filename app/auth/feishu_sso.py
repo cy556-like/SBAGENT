@@ -17,7 +17,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from app.config import settings
 
@@ -74,6 +74,20 @@ def _safe_next_path(value: str | None) -> str:
     if not value.startswith("/") or value.startswith("//"):
         return "/"
     return value
+
+
+def with_sso_marker(next_path: str | None) -> str:
+    """Return a safe local redirect that tells the frontend to prefer SSO.
+
+    The marker is deliberately attached only to redirects originating from
+    the Feishu entry point.  Normal visits to ``/`` therefore keep using the
+    existing username/password session stored by the web frontend.
+    """
+    safe_path = _safe_next_path(next_path)
+    parts = urlsplit(safe_path)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query["feishu_sso"] = "1"
+    return urlunsplit(("", "", parts.path or "/", urlencode(query), parts.fragment))
 
 
 def create_oauth_request(next_path: str = "/") -> tuple[str, str]:

@@ -54,6 +54,25 @@ class FeishuSSOTests(unittest.TestCase):
         _, next_path = feishu_sso.consume_oauth_state(state)
         self.assertEqual(next_path, "/")
 
+    def test_sso_marker_is_local_and_preserves_existing_query(self):
+        self.assertEqual(
+            feishu_sso.with_sso_marker("/workspace?tab=chat"),
+            "/workspace?tab=chat&feishu_sso=1",
+        )
+        self.assertEqual(
+            feishu_sso.with_sso_marker("//evil.example/path"),
+            "/?feishu_sso=1",
+        )
+
+    def test_frontend_keeps_web_and_feishu_sessions_separate(self):
+        source = Path(__file__).parents[1].joinpath("app", "static", "js", "app.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("let authSource = 'web';", source)
+        self.assertIn("const preferCookie = options.preferCookie === true;", source)
+        self.assertIn("if (!preferCookie && !token) return false;", source)
+        self.assertIn("{preferCookie: isFeishuSsoEntry}", source)
+
     def test_automatic_binding_is_stable_and_user_isolated(self):
         user_a = {"tenant_key": "tenant", "open_id": "ou_a", "name": "张三"}
         user_b = {"tenant_key": "tenant", "open_id": "ou_b", "name": "张三"}
