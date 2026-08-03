@@ -333,6 +333,11 @@
             <div class="header-title-group">
 
 
+                <button class="mobile-sidebar-btn" id="mobileSidebarBtn" type="button" onclick="toggleSidebar()" title="打开智能体菜单" aria-label="打开智能体菜单" aria-controls="sidebar" aria-expanded="false">
+                    <span aria-hidden="true">☰</span>
+                </button>
+
+
                 <h1 id="chatTitle">质量改进/精益 智能体</h1>
 
 
@@ -379,6 +384,27 @@
                     <button class="header-logout-btn" onclick="doLogout()" title="退出登录" aria-label="退出登录">⏻</button>
 
 
+                </div>
+
+
+                <div class="mobile-header-more-wrapper">
+                    <button class="mobile-header-more-btn" id="mobileHeaderMoreBtn" type="button" onclick="toggleMobileHeaderMenu(event)" title="更多操作" aria-label="更多操作" aria-haspopup="true" aria-expanded="false">⋯</button>
+                    <div class="mobile-header-menu" id="mobileHeaderMenu" role="menu">
+                        <div class="mobile-header-menu-section mobile-help-card">
+                            <strong>如在使用过程中需要帮助，请联系客服</strong>
+                            <a href="tel:18601256219">18601256219</a>
+                            <span>微信同号 · 每周7天 8:00-20:00</span>
+                        </div>
+                        <div class="mobile-header-menu-section">
+                            <div class="mobile-header-menu-label">导出当前对话</div>
+                            <div class="mobile-export-actions">
+                                <button type="button" onclick="exportChat('docx'); closeMobileHeaderMenu();" role="menuitem">Word</button>
+                                <button type="button" onclick="exportChat('pdf'); closeMobileHeaderMenu();" role="menuitem">PDF</button>
+                                <button type="button" onclick="exportChat('md'); closeMobileHeaderMenu();" role="menuitem">Markdown</button>
+                            </div>
+                        </div>
+                        <button class="mobile-menu-logout" type="button" onclick="closeMobileHeaderMenu(); doLogout();" role="menuitem">退出登录</button>
+                    </div>
                 </div>
 
 

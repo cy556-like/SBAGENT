@@ -2684,20 +2684,69 @@ async function clearCurrentChat() {
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
+    const button = document.getElementById('mobileSidebarBtn');
+    if (!sidebar || !overlay) return;
     if (window.innerWidth <= 768) {
-        sidebar.classList.toggle('mobile-open');
-        overlay.classList.toggle('active');
+        const willOpen = !sidebar.classList.contains('mobile-open');
+        sidebar.classList.toggle('mobile-open', willOpen);
+        overlay.classList.toggle('active', willOpen);
+        if (button) button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        closeMobileHeaderMenu();
     } else {
         sidebar.classList.toggle('collapsed');
     }
 }
 function closeSidebarMobile() {
-    document.getElementById('sidebar').classList.remove('mobile-open');
-    document.getElementById('sidebarOverlay').classList.remove('active');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    const button = document.getElementById('mobileSidebarBtn');
+    if (sidebar) sidebar.classList.remove('mobile-open');
+    if (overlay) overlay.classList.remove('active');
+    if (button) button.setAttribute('aria-expanded', 'false');
 }
 function closeSidebarOnMobile() {
     if (window.innerWidth <= 768) setTimeout(closeSidebarMobile, 200);
 }
+
+function toggleMobileHeaderMenu(event) {
+    if (event) event.stopPropagation();
+    const menu = document.getElementById('mobileHeaderMenu');
+    const button = document.getElementById('mobileHeaderMoreBtn');
+    if (!menu || !button) return;
+    const willOpen = !menu.classList.contains('show');
+    menu.classList.toggle('show', willOpen);
+    button.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    if (willOpen) {
+        closeSidebarMobile();
+        setTimeout(() => document.addEventListener('click', closeMobileHeaderMenuOnOutsideClick, { once: true }), 0);
+    }
+}
+
+function closeMobileHeaderMenu() {
+    const menu = document.getElementById('mobileHeaderMenu');
+    const button = document.getElementById('mobileHeaderMoreBtn');
+    if (menu) menu.classList.remove('show');
+    if (button) button.setAttribute('aria-expanded', 'false');
+}
+
+function closeMobileHeaderMenuOnOutsideClick(event) {
+    const wrapper = document.querySelector('.mobile-header-more-wrapper');
+    if (!wrapper || !wrapper.contains(event.target)) closeMobileHeaderMenu();
+}
+
+window.addEventListener('resize', function() {
+    if (window.innerWidth > 768) {
+        closeSidebarMobile();
+        closeMobileHeaderMenu();
+    }
+});
+
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        closeSidebarMobile();
+        closeMobileHeaderMenu();
+    }
+});
 
 // ===== Scroll =====
 function setupScrollDetection() {

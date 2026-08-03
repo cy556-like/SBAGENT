@@ -5084,3 +5084,263 @@ body.body-portal-mode {
         justify-self: start;
     }
 }
+
+/* ===== Mobile chat shell =====
+   Keep desktop unchanged while making the embedded Feishu mobile page usable. */
+.mobile-sidebar-btn,
+.mobile-header-more-wrapper {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .chat-page {
+        height: 100vh;
+        height: 100dvh;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .chat-main {
+        width: 100%;
+        min-width: 0;
+        height: 100vh;
+        height: 100dvh;
+    }
+
+    .sidebar,
+    .sidebar.collapsed {
+        left: 0;
+        top: 0;
+        width: min(86vw, 320px);
+        min-width: min(86vw, 320px);
+        max-width: 320px;
+        height: 100vh;
+        height: 100dvh;
+        transform: translateX(-100%);
+        transition: transform 0.24s ease;
+        box-shadow: none;
+        padding-top: env(safe-area-inset-top, 0px);
+        z-index: 1001;
+    }
+
+    .sidebar.mobile-open,
+    .sidebar.collapsed.mobile-open {
+        left: 0;
+        transform: translateX(0);
+        box-shadow: 12px 0 32px rgba(15, 23, 42, 0.2);
+    }
+
+    .sidebar-overlay {
+        z-index: 1000;
+        background: rgba(15, 23, 42, 0.4);
+        backdrop-filter: blur(1px);
+    }
+
+    .chat-header {
+        min-height: 54px;
+        padding: max(8px, env(safe-area-inset-top, 0px)) 8px 8px;
+        gap: 4px;
+        flex-wrap: nowrap;
+        overflow: visible;
+        flex-shrink: 0;
+    }
+
+    .header-title-group {
+        flex: 1 1 auto;
+        min-width: 0;
+        gap: 4px;
+    }
+
+    .header-title-group h1,
+    .chat-header h1 {
+        flex: 1 1 auto;
+        min-width: 34px;
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .mobile-sidebar-btn,
+    .mobile-header-more-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        padding: 0;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-input);
+        color: var(--text-primary);
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .mobile-sidebar-btn:active,
+    .mobile-header-more-btn:active {
+        background: var(--bg-secondary);
+    }
+
+    .header-kb-btn {
+        width: 34px;
+        height: 34px;
+        min-width: 34px;
+        padding: 0;
+        justify-content: center;
+    }
+
+    .header-kb-btn .kb-btn-text {
+        display: none;
+    }
+
+    .skills-wrapper {
+        flex: 0 0 auto;
+    }
+
+    .skills-dropdown {
+        position: fixed;
+        top: calc(56px + env(safe-area-inset-top, 0px));
+        left: 8px;
+        right: 8px;
+        width: auto;
+        max-width: none;
+        max-height: min(70vh, 520px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        z-index: 1201;
+    }
+
+    .chat-header .header-actions {
+        flex: 0 0 auto;
+        min-width: 0;
+        gap: 4px;
+        margin-left: 0;
+    }
+
+    .header-actions > .help-wrapper,
+    .header-actions > .export-wrapper,
+    .header-actions > .header-user-info {
+        display: none;
+    }
+
+    .model-select {
+        width: 76px;
+        max-width: 76px;
+        height: 36px;
+        padding: 5px 22px 5px 7px;
+        font-size: 11px;
+        text-overflow: ellipsis;
+    }
+
+    .mobile-header-more-wrapper {
+        display: inline-flex;
+        position: relative;
+        flex: 0 0 auto;
+    }
+
+    .mobile-header-menu {
+        display: none;
+        position: fixed;
+        top: calc(56px + env(safe-area-inset-top, 0px));
+        right: 8px;
+        width: min(310px, calc(100vw - 16px));
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        box-shadow: 0 14px 36px rgba(15, 23, 42, 0.2);
+        z-index: 1202;
+    }
+
+    .mobile-header-menu.show {
+        display: block;
+    }
+
+    .mobile-header-menu-section {
+        padding: 9px 8px;
+    }
+
+    .mobile-header-menu-section + .mobile-header-menu-section {
+        border-top: 1px solid var(--border);
+    }
+
+    .mobile-help-card {
+        display: grid;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--text-secondary);
+    }
+
+    .mobile-help-card strong {
+        color: var(--text-primary);
+        font-size: 13px;
+    }
+
+    .mobile-help-card a {
+        color: var(--accent);
+        font-size: 17px;
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+    .mobile-header-menu-label {
+        margin-bottom: 8px;
+        color: var(--text-secondary);
+        font-size: 12px;
+    }
+
+    .mobile-export-actions {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+    }
+
+    .mobile-export-actions button,
+    .mobile-menu-logout {
+        min-height: 36px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-input);
+        color: var(--text-primary);
+        cursor: pointer;
+    }
+
+    .mobile-menu-logout {
+        width: 100%;
+        margin-top: 4px;
+        color: #b42318;
+    }
+
+    .chat-content,
+    .chat-messages {
+        min-height: 0;
+    }
+
+    .chat-input-area,
+    .chat-content.centered .chat-input-area {
+        padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    }
+}
+
+@media (max-width: 390px) {
+    .chat-header {
+        padding-left: 6px;
+        padding-right: 6px;
+    }
+
+    .header-title-group h1,
+    .chat-header h1 {
+        font-size: 13px;
+    }
+
+    .model-select {
+        width: 68px;
+        max-width: 68px;
+    }
+}
