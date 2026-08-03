@@ -161,6 +161,7 @@ from app.rag.document import index_document, search_documents, list_indexed_docu
 from app.auth.user_manager import login_user, register_user, get_user_role, is_admin, list_all_users, delete_user, update_user_role, reset_user_password
 
 from app.auth.jwt_handler import create_token, verify_token, get_username_from_token, get_role_from_token
+from app.auth.permissions import is_full_kb_admin
 
 from app.auth.feishu_sso import (
     FeishuSSOError,
@@ -489,7 +490,7 @@ def require_admin(request: Request) -> str:
         role = get_role_from_token(token)
         if username and not feishu_username_active(username):
             raise HTTPException(status_code=401, detail="该飞书员工已离职或停用")
-        if username and role == "admin":
+        if username and (role == "admin" or is_full_kb_admin(username)):
             return username
         elif username:
             raise HTTPException(status_code=403, detail="权限不足，需要管理员权限")
@@ -499,7 +500,6 @@ def require_admin(request: Request) -> str:
 DIGITAL_TEACHER_AGENT_ID = "digital-zheng-teacher-agent"
 DIGITAL_TEACHER_AGENT_SUFFIX = "-digital-zheng-teacher-agent"
 DIGITAL_CHEN_TEACHER_AGENT_SUFFIX = "-digital-chen-teacher-agent"
-FULL_KB_ADMIN_USERNAME = "adminsubao"
 LIMITED_KB_ADMIN_USERNAME = "admin"
 
 
@@ -528,13 +528,13 @@ def ensure_chat_ownership(username: str, chat_id: str) -> None:
 
 def ensure_kb_upload_permission(username: str, agent_id: str) -> None:
     """校验知识库上传权限。老师智能体知识库仅全权限账号可上传。"""
-    if is_digital_teacher_agent(agent_id) and username != FULL_KB_ADMIN_USERNAME:
+    if is_digital_teacher_agent(agent_id) and not is_full_kb_admin(username):
         raise HTTPException(status_code=403, detail="当前账号无权向老师智能体知识库上传文档")
 
 
 def ensure_kb_delete_permission(username: str, agent_id: str) -> None:
     """校验知识库删除权限，后端强制执行，不能通过直接调用 API 绕过。"""
-    if username == FULL_KB_ADMIN_USERNAME:
+    if is_full_kb_admin(username):
         return
     if username == LIMITED_KB_ADMIN_USERNAME and not is_digital_teacher_agent(agent_id):
         return
@@ -714,6 +714,8 @@ async def auth_login(req: LoginRequest):
 
             result["token"] = token
 
+            result["full_kb_admin"] = is_full_kb_admin(req.username)
+
         return result
 
     finally:
@@ -805,9 +807,15 @@ async def auth_me(request: Request):
 
         token = _request_auth_token(request)
         username = require_auth(request)
-        role = get_role_from_token(token) or "user"
+        role = "admin" if is_full_kb_admin(username) else (get_role_from_token(token) or "user")
 
-        return {"valid": True, "username": username, "role": role, "token": token}
+        return {
+            "valid": True,
+            "username": username,
+            "role": role,
+            "token": token,
+            "full_kb_admin": is_full_kb_admin(username),
+        }
 
     except HTTPException:
 

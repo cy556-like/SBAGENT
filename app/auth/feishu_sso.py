@@ -20,6 +20,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from app.config import settings
+from app.auth.permissions import is_full_kb_admin
 
 
 AUTHORIZE_URL = "https://accounts.feishu.cn/open-apis/authen/v1/authorize"
@@ -350,6 +351,12 @@ def resolve_internal_identity(user_info: dict[str, Any]) -> tuple[str, str]:
             username, role = str(row[0]), str(row[1])
         else:
             username, role = _new_username(display_name, tenant_key, subject_id), "user"
+
+    # Accounts explicitly granted full knowledge-base administration are also
+    # administrators for the normal backend authorization checks.  This keeps
+    # the role stable across subsequent Feishu SSO logins.
+    if is_full_kb_admin(username):
+        role = "admin"
 
     with _database() as conn:
         now = int(time.time())

@@ -25,12 +25,14 @@ class FeishuSSOTests(unittest.TestCase):
             "FEISHU_APP_SECRET": settings.FEISHU_APP_SECRET,
             "FEISHU_REDIRECT_URI": settings.FEISHU_REDIRECT_URI,
             "FEISHU_ACCOUNT_MAP_JSON": settings.FEISHU_ACCOUNT_MAP_JSON,
+            "FULL_KB_ADMIN_USERNAMES": settings.FULL_KB_ADMIN_USERNAMES,
         }
         settings.DATA_DIR = self.temp.name
         settings.FEISHU_APP_ID = "cli_test"
         settings.FEISHU_APP_SECRET = "secret"
         settings.FEISHU_REDIRECT_URI = "https://example.com/api/v1/auth/feishu/callback"
         settings.FEISHU_ACCOUNT_MAP_JSON = ""
+        settings.FULL_KB_ADMIN_USERNAMES = "adminsubao"
 
     def tearDown(self):
         for key, value in self.original.items():
@@ -93,6 +95,21 @@ class FeishuSSOTests(unittest.TestCase):
             {"tenant_key": "tenant", "open_id": "ou_admin", "name": "管理员"}
         )
         self.assertEqual(identity, ("adminsubao", "admin"))
+
+    def test_full_kb_admin_configuration_promotes_existing_feishu_identity(self):
+        settings.FEISHU_ACCOUNT_MAP_JSON = json.dumps(
+            {"u_meiqin": {"username": "fs_梅琴_54b7b5dcf1", "role": "user"}}
+        )
+        settings.FULL_KB_ADMIN_USERNAMES = "adminsubao,fs_梅琴_54b7b5dcf1"
+        identity = feishu_sso.resolve_internal_identity(
+            {
+                "tenant_key": "tenant",
+                "user_id": "u_meiqin",
+                "open_id": "ou_meiqin",
+                "name": "梅琴",
+            }
+        )
+        self.assertEqual(identity, ("fs_梅琴_54b7b5dcf1", "admin"))
 
     def test_user_id_survives_open_id_change(self):
         first = feishu_sso.resolve_internal_identity(

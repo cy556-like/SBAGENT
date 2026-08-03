@@ -166,6 +166,11 @@ class Settings:
     FEISHU_REDIRECT_URI: str = os.getenv("FEISHU_REDIRECT_URI", "")
     FEISHU_ACCOUNT_MAP_JSON: str = os.getenv("FEISHU_ACCOUNT_MAP_JSON", "")
     FEISHU_SESSION_COOKIE: str = os.getenv("FEISHU_SESSION_COOKIE", "sbagent_session")
+    # Comma-separated internal usernames with upload/delete access to every
+    # knowledge base, including digital-teacher knowledge bases.
+    FULL_KB_ADMIN_USERNAMES: str = os.getenv(
+        "FULL_KB_ADMIN_USERNAMES", "adminsubao"
+    )
     # Feishu organization directory synchronization. ``tenant_key`` may be
     # omitted after at least one successful SSO login because it can then be
     # discovered from the existing binding database.

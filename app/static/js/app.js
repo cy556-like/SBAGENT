@@ -13,6 +13,7 @@ let currentUser = null;
 let userRole = null;
 let authToken = null;
 let authSource = 'web';
+let fullKnowledgeAdmin = false;
 let selectedFile = null;
 let selectedFileBase64 = null;
 let isLoading = false;
@@ -44,7 +45,6 @@ const CHEN_TEACHER_WORKSPACE_IDS = new Set([
     'quality-system-agent',
     'measurement-laboratory-agent'
 ]);
-const FULL_KB_ADMIN_USERNAME = 'adminsubao';
 
 function isRestorableNavigationState(state) {
     if (!state || !['portal', 'chat', 'kb'].includes(state.page)) return false;
@@ -101,14 +101,14 @@ function isDigitalChenTeacherAgent(agentId) {
 
 function canUploadKnowledgeBase(agentId = currentAgentId) {
     return Boolean(currentUser && agentId && (
-        currentUser === FULL_KB_ADMIN_USERNAME ||
+        fullKnowledgeAdmin ||
         !isDigitalTeacherAgent(agentId)
     ));
 }
 
 function canDeleteKnowledgeBase(agentId = currentAgentId) {
     return Boolean(currentUser && agentId && (
-        currentUser === FULL_KB_ADMIN_USERNAME ||
+        fullKnowledgeAdmin ||
         (currentUser === 'admin' && !isDigitalTeacherAgent(agentId))
     ));
 }
@@ -1783,6 +1783,7 @@ async function doLogin() {
             currentUser = username;
             loadAgentActiveChatIds();
             userRole = data.role || 'user';
+            fullKnowledgeAdmin = Boolean(data.full_kb_admin);
             if (data.token) { authToken = data.token; localStorage.setItem('authToken', data.token); }
             localStorage.setItem('userRole', userRole);
             msgEl.className = 'msg-box success'; msgEl.textContent = '登录成功！';
@@ -1855,7 +1856,7 @@ async function doLogout() {
     const skillBar = document.getElementById('skillModeBar');
     if (skillBar) skillBar.style.display = 'none';
     modeChatId = { agent: null, chat: null };
-    currentUser = null; userRole = null; authToken = null; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; currentWorkspaceId = null; agentKbUploadMode = false;
+    currentUser = null; userRole = null; authToken = null; fullKnowledgeAdmin = false; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; currentWorkspaceId = null; agentKbUploadMode = false;
     if (loggingOutSource !== 'feishu') {
         localStorage.removeItem('authToken');
         localStorage.removeItem('userRole');
@@ -1976,7 +1977,7 @@ window.addEventListener('popstate', async function(e) {
         // Back to login - perform logout to ensure clean state
         if (currentUser) {
             // Clear session but don't push another history entry
-            currentUser = null; userRole = null; authToken = null; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; currentWorkspaceId = null; agentKbUploadMode = false;
+            currentUser = null; userRole = null; authToken = null; fullKnowledgeAdmin = false; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; currentWorkspaceId = null; agentKbUploadMode = false;
             if (authSource !== 'feishu') {
                 localStorage.removeItem('authToken');
                 localStorage.removeItem('userRole');
@@ -2069,6 +2070,7 @@ async function tryAutoLogin(targetState = readNavigationState(), options = {}) {
             authToken = token;
             authSource = preferCookie ? 'feishu' : 'web';
             userRole = data.role || (persistWebToken ? localStorage.getItem('userRole') : null) || 'user';
+            fullKnowledgeAdmin = Boolean(data.full_kb_admin);
             if (persistWebToken) localStorage.setItem('userRole', userRole);
             // 初始化完成前保持聊天页隐藏，避免默认标题/欢迎页短暂闪现
             document.getElementById('chatPage').style.display = 'none';
