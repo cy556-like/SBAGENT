@@ -2681,12 +2681,16 @@ async function clearCurrentChat() {
 }
 
 // ===== Sidebar =====
+function isCompactChatLayout() {
+    return window.matchMedia('(max-width: 1180px)').matches;
+}
+
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
     const button = document.getElementById('mobileSidebarBtn');
     if (!sidebar || !overlay) return;
-    if (window.innerWidth <= 768) {
+    if (isCompactChatLayout()) {
         const willOpen = !sidebar.classList.contains('mobile-open');
         sidebar.classList.toggle('mobile-open', willOpen);
         overlay.classList.toggle('active', willOpen);
@@ -2705,7 +2709,7 @@ function closeSidebarMobile() {
     if (button) button.setAttribute('aria-expanded', 'false');
 }
 function closeSidebarOnMobile() {
-    if (window.innerWidth <= 768) setTimeout(closeSidebarMobile, 200);
+    if (isCompactChatLayout()) setTimeout(closeSidebarMobile, 200);
 }
 
 function toggleMobileHeaderMenu(event) {
@@ -2735,7 +2739,7 @@ function closeMobileHeaderMenuOnOutsideClick(event) {
 }
 
 window.addEventListener('resize', function() {
-    if (window.innerWidth > 768) {
+    if (!isCompactChatLayout()) {
         closeSidebarMobile();
         closeMobileHeaderMenu();
     }

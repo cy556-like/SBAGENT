@@ -5092,7 +5092,7 @@ body.body-portal-mode {
     display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1180px) {
     .chat-page {
         height: 100vh;
         height: 100dvh;
@@ -5206,9 +5206,9 @@ body.body-portal-mode {
         position: fixed;
         top: calc(56px + env(safe-area-inset-top, 0px));
         left: 8px;
-        right: 8px;
-        width: auto;
-        max-width: none;
+        right: auto;
+        width: min(520px, calc(100vw - 16px));
+        max-width: calc(100vw - 16px);
         max-height: min(70vh, 520px);
         overflow-y: auto;
         overscroll-behavior: contain;
