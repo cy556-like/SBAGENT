@@ -56,7 +56,11 @@ class RegressionContracts(unittest.TestCase):
     def test_normal_web_entry_keeps_login_visible_during_auth_initialization(self):
         app_js = read("app/static/js/app.js")
         self.assertIn(
-            "if (isFeishuSsoEntry && loginModal) loginModal.classList.remove('show');",
+            "const isSsoEntry = isFeishuSsoEntry || isSqmSsoEntry || hasSqmTabSession;",
+            app_js,
+        )
+        self.assertIn(
+            "if (isSsoEntry && loginModal) loginModal.classList.remove('show');",
             app_js,
         )
         self.assertNotIn(

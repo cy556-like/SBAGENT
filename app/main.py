@@ -321,6 +321,18 @@ def create_app() -> FastAPI:
                             logger.info(f"[定期清理] 释放了 {cleaned} 个空闲会话的内存")
                     except Exception as e:
                         logger.warning(f"[定期清理] 会话清理失败: {e}")
+
+                    # SQM-only retention: delete chats and their generated
+                    # files after the configured seven-day window. Web and
+                    # Feishu identities are deliberately out of scope.
+                    try:
+                        if settings.SQM_SSO_ENABLED:
+                            from app.auth.sqm_sso import cleanup_expired_sqm_data
+                            sqm_cleaned = cleanup_expired_sqm_data()
+                            if sqm_cleaned["chats"] > 0:
+                                logger.info("[SQM retention] cleaned: %s", sqm_cleaned)
+                    except Exception as e:
+                        logger.warning(f"[SQM retention] cleanup failed: {e}")
                     
                     # 2. 清理过期的导出文件（超过24小时的）
                     try:
@@ -328,13 +340,19 @@ def create_app() -> FastAPI:
                         if os.path.exists(export_dir):
                             cleaned_files = 0
                             now = time.time()
-                            max_age = 86400  # 24小时
+                            sqm_export_age = max(1, settings.SQM_SSO_RETENTION_DAYS) * 86400
+                            from app.auth.sqm_sso import is_sqm_chat_id
                             for item in os.listdir(export_dir):
                                 sub_dir = os.path.join(export_dir, item)
                                 if os.path.isdir(sub_dir):
                                     # 检查目录修改时间
                                     try:
                                         mtime = os.path.getmtime(sub_dir)
+                                        max_age = (
+                                            sqm_export_age
+                                            if settings.SQM_SSO_ENABLED and is_sqm_chat_id(item)
+                                            else 86400
+                                        )
                                         if now - mtime > max_age:
                                             import shutil
                                             shutil.rmtree(sub_dir)
@@ -342,7 +360,7 @@ def create_app() -> FastAPI:
                                     except Exception:
                                         pass
                             if cleaned_files > 0:
-                                logger.info(f"[定期清理] 清理了 {cleaned_files} 个过期导出目录（>24h）")
+                                logger.info(f"[定期清理] 清理了 {cleaned_files} 个过期导出目录")
                     except Exception as e:
                         logger.warning(f"[定期清理] 导出文件清理失败: {e}")
                     

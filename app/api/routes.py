@@ -174,6 +174,13 @@ from app.auth.feishu_sso import (
     resolve_internal_identity,
     with_sso_marker,
 )
+from app.auth.sqm_sso import (
+    SQMSSOError,
+    consume_login_ticket as consume_sqm_login_ticket,
+    create_login_ticket as create_sqm_login_ticket,
+    is_username_active as sqm_username_active,
+    verify_partner_request as verify_sqm_partner_request,
+)
 
 from app.memory.manager import (
 
@@ -428,7 +435,15 @@ def _request_auth_token(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         return auth_header[7:]
-    return request.cookies.get(settings.FEISHU_SESSION_COOKIE, "")
+    return (
+        request.cookies.get(settings.FEISHU_SESSION_COOKIE, "")
+        or request.cookies.get(settings.SQM_SSO_SESSION_COOKIE, "")
+    )
+
+
+def _identity_username_active(username: str) -> bool:
+    """Honor explicit deactivation in either external identity provider."""
+    return feishu_username_active(username) and sqm_username_active(username)
 
 
 def get_current_user(request: Request) -> str:
@@ -445,7 +460,7 @@ def get_current_user(request: Request) -> str:
 
     token = _request_auth_token(request)
     username = get_username_from_token(token) if token else None
-    if username and feishu_username_active(username):
+    if username and _identity_username_active(username):
         return username
 
     return ""
@@ -466,7 +481,7 @@ def require_auth(request: Request) -> str:
 
     token = _request_auth_token(request)
     username = get_username_from_token(token) if token else None
-    if username and feishu_username_active(username):
+    if username and _identity_username_active(username):
         return username
 
     raise HTTPException(status_code=401, detail="未认证，请重新登录")
@@ -488,7 +503,7 @@ def require_admin(request: Request) -> str:
     if token:
         username = get_username_from_token(token)
         role = get_role_from_token(token)
-        if username and not feishu_username_active(username):
+        if username and not _identity_username_active(username):
             raise HTTPException(status_code=401, detail="该飞书员工已离职或停用")
         if username and (role == "admin" or is_full_kb_admin(username)):
             return username
@@ -597,6 +612,13 @@ class LoginRequest(BaseModel):
     username: str
 
     password: str
+
+
+class SQMTicketRequest(BaseModel):
+    """Identity asserted by the authenticated SQM backend."""
+
+    user_id: str
+    name: str = ""
 
 
 
@@ -727,6 +749,55 @@ def _feishu_error_redirect(message: str) -> RedirectResponse:
     return RedirectResponse(url=f"/?feishu_error={quote(message[:300])}", status_code=303)
 
 
+@router.post("/auth/sqm/tickets", summary="SQM backend requests a one-time login URL")
+async def sqm_create_login_ticket(
+    request: Request,
+    req: SQMTicketRequest,
+    x_sqm_client_id: str = Header("", alias="X-SQM-Client-ID"),
+    x_sqm_timestamp: str = Header("", alias="X-SQM-Timestamp"),
+    x_sqm_nonce: str = Header("", alias="X-SQM-Nonce"),
+    x_sqm_signature: str = Header("", alias="X-SQM-Signature"),
+):
+    """Accept only an HMAC-authenticated server-to-server request from SQM."""
+    raw_body = await request.body()
+    try:
+        verify_sqm_partner_request(
+            client_id=x_sqm_client_id,
+            timestamp=x_sqm_timestamp,
+            nonce=x_sqm_nonce,
+            signature=x_sqm_signature,
+            raw_body=raw_body,
+        )
+        return create_sqm_login_ticket(req.user_id, req.name)
+    except SQMSSOError as exc:
+        logger.warning("SQM SSO ticket request rejected: %s", exc)
+        raise HTTPException(status_code=401, detail="SQM SSO request rejected") from exc
+
+
+@router.get("/auth/sqm/login", summary="Consume a one-time SQM browser login ticket")
+async def sqm_consume_login_ticket(ticket: str = ""):
+    try:
+        username, role = consume_sqm_login_ticket(ticket)
+        sbagent_token = create_token(username, role=role)
+        response = RedirectResponse(url="/?sqm_sso=1", status_code=303)
+        response.set_cookie(
+            key=settings.SQM_SSO_SESSION_COOKIE,
+            value=sbagent_token,
+            max_age=86400 * 7,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+        logger.info("SQM user SSO succeeded: username=%s", username)
+        return response
+    except SQMSSOError as exc:
+        logger.warning("SQM browser login rejected: %s", exc)
+        return RedirectResponse(
+            url=f"/?sqm_error={quote(str(exc)[:200])}", status_code=303
+        )
+
+
 @router.get("/auth/feishu/start", summary="启动飞书网页免登")
 async def feishu_auth_start(request: Request, next: str = "/"):
     """Start OAuth only when the browser has no valid SBAGENT session."""
@@ -825,13 +896,17 @@ async def auth_me(request: Request):
 @router.post("/auth/logout", summary="退出当前登录")
 async def auth_logout():
     response = Response(content='{"success":true}', media_type="application/json")
-    response.delete_cookie(
-        key=settings.FEISHU_SESSION_COOKIE,
-        path="/",
-        secure=True,
-        httponly=True,
-        samesite="lax",
-    )
+    for cookie_name in {
+        settings.FEISHU_SESSION_COOKIE,
+        settings.SQM_SSO_SESSION_COOKIE,
+    }:
+        response.delete_cookie(
+            key=cookie_name,
+            path="/",
+            secure=True,
+            httponly=True,
+            samesite="lax",
+        )
     return response
 
 

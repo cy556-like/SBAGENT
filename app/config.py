@@ -183,6 +183,23 @@ class Settings:
     ).strip().lower() in {"1", "true", "yes", "on"}
     FEISHU_CONTACTS_DB: str = os.getenv("FEISHU_CONTACTS_DB", "")
 
+    # SQM server-to-server SSO. SQM requests a one-time browser login URL;
+    # users never send their SQM or SBAGENT password through the browser.
+    SQM_SSO_ENABLED: bool = os.getenv(
+        "SQM_SSO_ENABLED", "false"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    SQM_SSO_CLIENT_ID: str = os.getenv("SQM_SSO_CLIENT_ID", "sqm-system")
+    SQM_SSO_SHARED_SECRET: str = os.getenv("SQM_SSO_SHARED_SECRET", "")
+    SQM_SSO_PUBLIC_URL: str = os.getenv("SQM_SSO_PUBLIC_URL", "")
+    SQM_SSO_TICKET_EXPIRE_SECONDS: int = int(
+        os.getenv("SQM_SSO_TICKET_EXPIRE_SECONDS", "60")
+    )
+    SQM_SSO_RETENTION_DAYS: int = int(os.getenv("SQM_SSO_RETENTION_DAYS", "7"))
+    SQM_SSO_SESSION_COOKIE: str = os.getenv(
+        "SQM_SSO_SESSION_COOKIE",
+        os.getenv("FEISHU_SESSION_COOKIE", "sbagent_session"),
+    )
+
     # 数据目录
     DATA_DIR: str = os.getenv("DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"))
     DOCUMENTS_DIR: str = os.getenv("DOCUMENTS_DIR", os.path.join(DATA_DIR, "documents"))

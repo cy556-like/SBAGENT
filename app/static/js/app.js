@@ -1839,7 +1839,7 @@ async function doRegister() {
 
 async function doLogout() {
     const loggingOutSource = authSource;
-    if (loggingOutSource === 'feishu') {
+    if (loggingOutSource !== 'web') {
         try {
             await fetch('/api/v1/auth/logout', { method: 'POST' });
         } catch (e) {
@@ -1857,11 +1857,12 @@ async function doLogout() {
     if (skillBar) skillBar.style.display = 'none';
     modeChatId = { agent: null, chat: null };
     currentUser = null; userRole = null; authToken = null; fullKnowledgeAdmin = false; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; currentWorkspaceId = null; agentKbUploadMode = false;
-    if (loggingOutSource !== 'feishu') {
+    if (loggingOutSource === 'web') {
         localStorage.removeItem('authToken');
         localStorage.removeItem('userRole');
     }
     authSource = 'web';
+    try { sessionStorage.removeItem('subaoSsoSource'); } catch (e) {}
     clearNavigationState();
     // Hide KB page if open
     const kbPage = document.getElementById('kbPage');
@@ -1978,11 +1979,12 @@ window.addEventListener('popstate', async function(e) {
         if (currentUser) {
             // Clear session but don't push another history entry
             currentUser = null; userRole = null; authToken = null; fullKnowledgeAdmin = false; selectedFile = null; currentChatId = null; allChats = []; currentAgentId = null; currentWorkspaceId = null; agentKbUploadMode = false;
-            if (authSource !== 'feishu') {
+            if (authSource === 'web') {
                 localStorage.removeItem('authToken');
                 localStorage.removeItem('userRole');
             }
             authSource = 'web';
+            try { sessionStorage.removeItem('subaoSsoSource'); } catch (e) {}
             clearNavigationState();
             if (kbPage) kbPage.style.display = 'none';
             if (agentPortalPage) agentPortalPage.style.display = 'none';
@@ -2068,7 +2070,7 @@ async function tryAutoLogin(targetState = readNavigationState(), options = {}) {
             currentUser = data.username;
             loadAgentActiveChatIds();
             authToken = token;
-            authSource = preferCookie ? 'feishu' : 'web';
+            authSource = preferCookie ? (options.cookieSource || 'sso') : 'web';
             userRole = data.role || (persistWebToken ? localStorage.getItem('userRole') : null) || 'user';
             fullKnowledgeAdmin = Boolean(data.full_kb_admin);
             if (persistWebToken) localStorage.setItem('userRole', userRole);
@@ -4073,27 +4075,44 @@ document.addEventListener('DOMContentLoaded', async function() {
     const loginModal = document.getElementById('loginModal');
     const pageUrl = new URL(window.location.href);
     const isFeishuSsoEntry = pageUrl.searchParams.get('feishu_sso') === '1';
+    const isSqmSsoEntry = pageUrl.searchParams.get('sqm_sso') === '1';
+    let hasSqmTabSession = false;
+    try {
+        hasSqmTabSession = sessionStorage.getItem('subaoSsoSource') === 'sqm';
+        if (isSqmSsoEntry) sessionStorage.setItem('subaoSsoSource', 'sqm');
+    } catch (e) {}
+    const isSsoEntry = isFeishuSsoEntry || isSqmSsoEntry || hasSqmTabSession;
     // Keep the normal web login visible while authentication initializes.
     // Previously it was hidden unconditionally, so a stale cache or any
     // initialization exception left every top-level page hidden (white screen).
-    if (isFeishuSsoEntry && loginModal) loginModal.classList.remove('show');
-    if (isFeishuSsoEntry) {
+    if (isSsoEntry && loginModal) loginModal.classList.remove('show');
+    if (isSqmSsoEntry) {
+        // A previous normal web login must never override the SQM identity.
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('userRole');
+    }
+    if (isSsoEntry) {
         pageUrl.searchParams.delete('feishu_sso');
+        pageUrl.searchParams.delete('sqm_sso');
         const cleanUrl = pageUrl.pathname + (pageUrl.search ? pageUrl.search : '') + (pageUrl.hash || '');
         history.replaceState(history.state, '', cleanUrl);
     }
-    const autoLoggedIn = await tryAutoLogin(
-        readNavigationState(),
-        {preferCookie: isFeishuSsoEntry}
-    );
+    const ssoLoginOptions = (isSqmSsoEntry || hasSqmTabSession)
+        ? {preferCookie: true, cookieSource: 'sqm'}
+        : {preferCookie: isFeishuSsoEntry};
+    const autoLoggedIn = await tryAutoLogin(readNavigationState(), ssoLoginOptions);
     if (!autoLoggedIn) {
+        try { sessionStorage.removeItem('subaoSsoSource'); } catch (e) {}
         clearNavigationState();
         history.replaceState({page: 'login'}, '');
         const feishuError = new URLSearchParams(window.location.search).get('feishu_error');
-        if (feishuError) {
+        const sqmError = new URLSearchParams(window.location.search).get('sqm_error');
+        if (feishuError || sqmError) {
             const msg = document.getElementById('loginMsg');
             if (msg) {
-                msg.textContent = `飞书免登录失败：${feishuError}`;
+                msg.textContent = sqmError
+                    ? `SQM单点登录失败：${sqmError}`
+                    : `飞书免登录失败：${feishuError}`;
                 msg.className = 'msg-box error';
             }
             history.replaceState({page: 'login'}, '', window.location.pathname);
