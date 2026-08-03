@@ -4,7 +4,7 @@
  * 版本: 1.3.0
  */
 
-const CACHE_VERSION = 'v1.3.0-20260729';
+const CACHE_VERSION = 'v1.3.1-20260803';
 const CACHE_NAME = `sbagent-${CACHE_VERSION}`;
 const STATIC_CACHE = `sbagent-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `sbagent-dynamic-${CACHE_VERSION}`;
@@ -12,13 +12,13 @@ const DYNAMIC_CACHE = `sbagent-dynamic-${CACHE_VERSION}`;
 // 需要预缓存的静态资源
 const PRECACHE_URLS = [
     '/',
-    '/static/css/style.css?v=20260729-cache1',
-    '/static/js/subagents-data.js?v=20260729-cache1',
-    '/static/js/app.js?v=20260729-cache1',
-    '/static/manifest.json?v=20260729-cache1',
-    '/static/icons/icon-gy.svg?v=20260729-cache1',
-    '/static/icons/icon-192.png?v=20260729-cache1',
-    '/static/icons/icon-512.png?v=20260729-cache1',
+    '/static/css/style.css?v=20260803-cache2',
+    '/static/js/subagents-data.js?v=20260803-cache2',
+    '/static/js/app.js?v=20260803-cache2',
+    '/static/manifest.json?v=20260803-cache2',
+    '/static/icons/icon-gy.svg?v=20260803-cache2',
+    '/static/icons/icon-192.png?v=20260803-cache2',
+    '/static/icons/icon-512.png?v=20260803-cache2',
 ];
 
 // 不缓存的路径（API请求、流式响应等）

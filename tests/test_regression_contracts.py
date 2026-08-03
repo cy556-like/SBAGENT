@@ -53,6 +53,17 @@ class RegressionContracts(unittest.TestCase):
         self.assertIn("fetchAllChatsForUser", app_js)
         self.assertIn("agentActiveChatIds:${currentUser}", app_js)
 
+    def test_normal_web_entry_keeps_login_visible_during_auth_initialization(self):
+        app_js = read("app/static/js/app.js")
+        self.assertIn(
+            "if (isFeishuSsoEntry && loginModal) loginModal.classList.remove('show');",
+            app_js,
+        )
+        self.assertNotIn(
+            "if (loginModal) loginModal.classList.remove('show');\n    const pageUrl",
+            app_js,
+        )
+
     def test_pwa_brand_and_cache_are_sbagent(self):
         manifest = read("app/static/manifest.json")
         service_worker = read("app/static/sw.js")

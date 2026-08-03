@@ -4071,9 +4071,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Always check /auth/me: Feishu SSO uses an HttpOnly cookie on first load,
     // while normal web login continues to use the existing local JWT.
     const loginModal = document.getElementById('loginModal');
-    if (loginModal) loginModal.classList.remove('show');
     const pageUrl = new URL(window.location.href);
     const isFeishuSsoEntry = pageUrl.searchParams.get('feishu_sso') === '1';
+    // Keep the normal web login visible while authentication initializes.
+    // Previously it was hidden unconditionally, so a stale cache or any
+    // initialization exception left every top-level page hidden (white screen).
+    if (isFeishuSsoEntry && loginModal) loginModal.classList.remove('show');
     if (isFeishuSsoEntry) {
         pageUrl.searchParams.delete('feishu_sso');
         const cleanUrl = pageUrl.pathname + (pageUrl.search ? pageUrl.search : '') + (pageUrl.hash || '');

@@ -16,16 +16,16 @@
     <title>速豹</title>
 
 
-    <link rel="icon" type="image/svg+xml" href="/static/icons/icon-gy.svg?v=20260729-cache1">
+    <link rel="icon" type="image/svg+xml" href="/static/icons/icon-gy.svg?v=20260803-cache2">
 
 
-    <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png?v=20260729-cache1">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png?v=20260803-cache2">
 
 
-    <link rel="apple-touch-icon" href="/static/icons/icon-192.png?v=20260729-cache1">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png?v=20260803-cache2">
 
 
-    <link rel="manifest" href="/static/manifest.json?v=20260729-cache1">
+    <link rel="manifest" href="/static/manifest.json?v=20260803-cache2">
 
 
     <meta name="mobile-web-app-capable" content="yes">
@@ -62,7 +62,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
 
 
-    <link rel="stylesheet" href="/static/css/style.css?v=20260729-cache1">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260803-cache2">
 
 
 </head>
@@ -102,7 +102,7 @@
 
 
             <span class="login-top-bar-brand">
-                <img class="login-top-bar-logo" src="/static/images/subao-logo-white.png?v=20260729-cache1" alt="速豹官方标志">
+                <img class="login-top-bar-logo" src="/static/images/subao-logo-white.png?v=20260803-cache2" alt="速豹官方标志">
                 <span>速豹 AI智能体平台</span>
             </span>
 
@@ -122,7 +122,7 @@
             <div class="login-left-panel">
 
 
-                <img class="login-calligraphy-img" src="/static/images/calligraphy_clean.png?v=20260729-cache1" alt="携手并进 共赢未来">
+                <img class="login-calligraphy-img" src="/static/images/calligraphy_clean.png?v=20260803-cache2" alt="携手并进 共赢未来">
 
 
             </div>
@@ -230,7 +230,7 @@
         <div class="agent-portal-brand" aria-label="速豹质量管理智能体平台">
 
 
-            <img class="agent-portal-logo" src="/static/images/subao-logo-white.png?v=20260729-cache1" alt="速豹官方标志">
+            <img class="agent-portal-logo" src="/static/images/subao-logo-white.png?v=20260803-cache2" alt="速豹官方标志">
 
 
             <span class="agent-portal-brand-copy">
@@ -650,7 +650,7 @@
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
-        const swReloadGuard = 'sbagent-sw-reloaded-20260729-cache1';
+        const swReloadGuard = 'sbagent-sw-reloaded-20260803-cache2';
         const hadController = Boolean(navigator.serviceWorker.controller);
         let reloadingForUpdate = false;
         // 只防止同一次接管造成循环刷新；页面稳定后允许后续版本再次自动更新。
@@ -667,7 +667,7 @@ if ('serviceWorker' in navigator) {
             });
         }
 
-        navigator.serviceWorker.register('/static/sw.js?v=20260729-cache1', {
+        navigator.serviceWorker.register('/static/sw.js?v=20260803-cache2', {
             updateViaCache: 'none'
         }).then(function(reg) {
             console.log('SW registered:', reg.scope);
@@ -754,8 +754,8 @@ function toggleFaq(el) {
 </script>
 
 
-    <script src="/static/js/subagents-data.js?v=20260729-cache1"></script>
-<script src="/static/js/app.js?v=20260729-cache1"></script>
+    <script src="/static/js/subagents-data.js?v=20260803-cache2"></script>
+<script src="/static/js/app.js?v=20260803-cache2"></script>
 
 
 </body>
