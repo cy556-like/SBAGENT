@@ -373,16 +373,16 @@ def create_chat(username: str, title: str = "新对话", mode: str = "agent", ag
     chats = _load_user_chats(username)
 
     # 自动淘汰：如果指定了 agent_id，检查该智能体下已有会话数
-    # SQM identities use an explicit rolling seven-day retention policy, so
-    # they must not be evicted early by the legacy two-chats-per-agent limit.
-    is_sqm_identity = False
+    # The fixed SQM demo account uses an explicit rolling seven-day retention
+    # policy, so it must not be evicted early by the two-chat legacy limit.
+    is_sqm_demo_identity = False
     try:
-        from app.auth.sqm_sso import is_sqm_username
+        from app.auth.sqm_demo import is_demo_username
 
-        is_sqm_identity = is_sqm_username(username)
+        is_sqm_demo_identity = is_demo_username(username)
     except Exception:
         pass
-    if agent_id and not is_sqm_identity:
+    if agent_id and not is_sqm_demo_identity:
         agent_chats = [c for c in chats if c.get("agent_id") == agent_id]
         if len(agent_chats) >= MAX_CHATS_PER_AGENT:
             # 按 updated_at 升序排列，最老的在前面

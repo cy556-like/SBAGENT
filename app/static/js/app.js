@@ -4075,30 +4075,30 @@ document.addEventListener('DOMContentLoaded', async function() {
     const loginModal = document.getElementById('loginModal');
     const pageUrl = new URL(window.location.href);
     const isFeishuSsoEntry = pageUrl.searchParams.get('feishu_sso') === '1';
-    const isSqmSsoEntry = pageUrl.searchParams.get('sqm_sso') === '1';
-    let hasSqmTabSession = false;
+    const isSqmDemoEntry = pageUrl.searchParams.get('sqm_demo') === '1';
+    let hasSqmDemoTabSession = false;
     try {
-        hasSqmTabSession = sessionStorage.getItem('subaoSsoSource') === 'sqm';
-        if (isSqmSsoEntry) sessionStorage.setItem('subaoSsoSource', 'sqm');
+        hasSqmDemoTabSession = sessionStorage.getItem('subaoSsoSource') === 'sqm_demo';
+        if (isSqmDemoEntry) sessionStorage.setItem('subaoSsoSource', 'sqm_demo');
     } catch (e) {}
-    const isSsoEntry = isFeishuSsoEntry || isSqmSsoEntry || hasSqmTabSession;
+    const isSsoEntry = isFeishuSsoEntry || isSqmDemoEntry || hasSqmDemoTabSession;
     // Keep the normal web login visible while authentication initializes.
     // Previously it was hidden unconditionally, so a stale cache or any
     // initialization exception left every top-level page hidden (white screen).
     if (isSsoEntry && loginModal) loginModal.classList.remove('show');
-    if (isSqmSsoEntry) {
+    if (isSqmDemoEntry) {
         // A previous normal web login must never override the SQM identity.
         localStorage.removeItem('authToken');
         localStorage.removeItem('userRole');
     }
     if (isSsoEntry) {
         pageUrl.searchParams.delete('feishu_sso');
-        pageUrl.searchParams.delete('sqm_sso');
+        pageUrl.searchParams.delete('sqm_demo');
         const cleanUrl = pageUrl.pathname + (pageUrl.search ? pageUrl.search : '') + (pageUrl.hash || '');
         history.replaceState(history.state, '', cleanUrl);
     }
-    const ssoLoginOptions = (isSqmSsoEntry || hasSqmTabSession)
-        ? {preferCookie: true, cookieSource: 'sqm'}
+    const ssoLoginOptions = (isSqmDemoEntry || hasSqmDemoTabSession)
+        ? {preferCookie: true, cookieSource: 'sqm_demo'}
         : {preferCookie: isFeishuSsoEntry};
     const autoLoggedIn = await tryAutoLogin(readNavigationState(), ssoLoginOptions);
     if (!autoLoggedIn) {
@@ -4106,12 +4106,12 @@ document.addEventListener('DOMContentLoaded', async function() {
         clearNavigationState();
         history.replaceState({page: 'login'}, '');
         const feishuError = new URLSearchParams(window.location.search).get('feishu_error');
-        const sqmError = new URLSearchParams(window.location.search).get('sqm_error');
-        if (feishuError || sqmError) {
+        const sqmDemoError = new URLSearchParams(window.location.search).get('sqm_demo_error');
+        if (feishuError || sqmDemoError) {
             const msg = document.getElementById('loginMsg');
             if (msg) {
-                msg.textContent = sqmError
-                    ? `SQM单点登录失败：${sqmError}`
+                msg.textContent = sqmDemoError
+                    ? 'SQM演示入口无效或未启用，请联系管理员'
                     : `飞书免登录失败：${feishuError}`;
                 msg.className = 'msg-box error';
             }

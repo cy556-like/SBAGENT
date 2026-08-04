@@ -183,20 +183,19 @@ class Settings:
     ).strip().lower() in {"1", "true", "yes", "on"}
     FEISHU_CONTACTS_DB: str = os.getenv("FEISHU_CONTACTS_DB", "")
 
-    # SQM server-to-server SSO. SQM requests a one-time browser login URL;
-    # users never send their SQM or SBAGENT password through the browser.
-    SQM_SSO_ENABLED: bool = os.getenv(
-        "SQM_SSO_ENABLED", "false"
+    # SQM demonstration entry. This is intentionally a fixed shared account,
+    # not per-user SSO. The entry key is independent from the account password
+    # and the application's JWT signing secret, so it can be rotated safely.
+    SQM_DEMO_LOGIN_ENABLED: bool = os.getenv(
+        "SQM_DEMO_LOGIN_ENABLED", "false"
     ).strip().lower() in {"1", "true", "yes", "on"}
-    SQM_SSO_CLIENT_ID: str = os.getenv("SQM_SSO_CLIENT_ID", "sqm-system")
-    SQM_SSO_SHARED_SECRET: str = os.getenv("SQM_SSO_SHARED_SECRET", "")
-    SQM_SSO_PUBLIC_URL: str = os.getenv("SQM_SSO_PUBLIC_URL", "")
-    SQM_SSO_TICKET_EXPIRE_SECONDS: int = int(
-        os.getenv("SQM_SSO_TICKET_EXPIRE_SECONDS", "60")
+    SQM_DEMO_USERNAME: str = os.getenv("SQM_DEMO_USERNAME", "jiangxy")
+    SQM_DEMO_ENTRY_KEY: str = os.getenv("SQM_DEMO_ENTRY_KEY", "")
+    SQM_DEMO_RETENTION_DAYS: int = int(
+        os.getenv("SQM_DEMO_RETENTION_DAYS", "7")
     )
-    SQM_SSO_RETENTION_DAYS: int = int(os.getenv("SQM_SSO_RETENTION_DAYS", "7"))
-    SQM_SSO_SESSION_COOKIE: str = os.getenv(
-        "SQM_SSO_SESSION_COOKIE",
+    SQM_DEMO_SESSION_COOKIE: str = os.getenv(
+        "SQM_DEMO_SESSION_COOKIE",
         os.getenv("FEISHU_SESSION_COOKIE", "sbagent_session"),
     )
 

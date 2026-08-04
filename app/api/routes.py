@@ -174,12 +174,9 @@ from app.auth.feishu_sso import (
     resolve_internal_identity,
     with_sso_marker,
 )
-from app.auth.sqm_sso import (
-    SQMSSOError,
-    consume_login_ticket as consume_sqm_login_ticket,
-    create_login_ticket as create_sqm_login_ticket,
-    is_username_active as sqm_username_active,
-    verify_partner_request as verify_sqm_partner_request,
+from app.auth.sqm_demo import (
+    SQMDemoLoginError,
+    authenticate_demo_entry,
 )
 
 from app.memory.manager import (
@@ -437,13 +434,13 @@ def _request_auth_token(request: Request) -> str:
         return auth_header[7:]
     return (
         request.cookies.get(settings.FEISHU_SESSION_COOKIE, "")
-        or request.cookies.get(settings.SQM_SSO_SESSION_COOKIE, "")
+        or request.cookies.get(settings.SQM_DEMO_SESSION_COOKIE, "")
     )
 
 
 def _identity_username_active(username: str) -> bool:
-    """Honor explicit deactivation in either external identity provider."""
-    return feishu_username_active(username) and sqm_username_active(username)
+    """Honor explicit deactivation of mapped Feishu identities."""
+    return feishu_username_active(username)
 
 
 def get_current_user(request: Request) -> str:
@@ -614,16 +611,6 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class SQMTicketRequest(BaseModel):
-    """Identity asserted by the authenticated SQM backend."""
-
-    user_id: str
-    name: str = ""
-
-
-
-
-
 class RegisterRequest(BaseModel):
 
     """注册请求"""
@@ -749,52 +736,35 @@ def _feishu_error_redirect(message: str) -> RedirectResponse:
     return RedirectResponse(url=f"/?feishu_error={quote(message[:300])}", status_code=303)
 
 
-@router.post("/auth/sqm/tickets", summary="SQM backend requests a one-time login URL")
-async def sqm_create_login_ticket(
-    request: Request,
-    req: SQMTicketRequest,
-    x_sqm_client_id: str = Header("", alias="X-SQM-Client-ID"),
-    x_sqm_timestamp: str = Header("", alias="X-SQM-Timestamp"),
-    x_sqm_nonce: str = Header("", alias="X-SQM-Nonce"),
-    x_sqm_signature: str = Header("", alias="X-SQM-Signature"),
-):
-    """Accept only an HMAC-authenticated server-to-server request from SQM."""
-    raw_body = await request.body()
-    try:
-        verify_sqm_partner_request(
-            client_id=x_sqm_client_id,
-            timestamp=x_sqm_timestamp,
-            nonce=x_sqm_nonce,
-            signature=x_sqm_signature,
-            raw_body=raw_body,
-        )
-        return create_sqm_login_ticket(req.user_id, req.name)
-    except SQMSSOError as exc:
-        logger.warning("SQM SSO ticket request rejected: %s", exc)
-        raise HTTPException(status_code=401, detail="SQM SSO request rejected") from exc
+@router.get("/auth/sqm/demo-login", summary="SQM固定演示账号自动登录")
+async def sqm_demo_login(key: str = ""):
+    """Sign a visitor into the configured shared demo account.
 
-
-@router.get("/auth/sqm/login", summary="Consume a one-time SQM browser login ticket")
-async def sqm_consume_login_ticket(ticket: str = ""):
+    This is a temporary demonstration entry, not per-user SSO. The URL carries
+    only a dedicated, rotatable entry key; it never exposes the account
+    password or the application's JWT secret.
+    """
     try:
-        username, role = consume_sqm_login_ticket(ticket)
+        username, role = authenticate_demo_entry(key)
         sbagent_token = create_token(username, role=role)
-        response = RedirectResponse(url="/?sqm_sso=1", status_code=303)
+        response = RedirectResponse(url="/?sqm_demo=1", status_code=303)
         response.set_cookie(
-            key=settings.SQM_SSO_SESSION_COOKIE,
+            key=settings.SQM_DEMO_SESSION_COOKIE,
             value=sbagent_token,
-            max_age=86400 * 7,
+            max_age=max(1, settings.SQM_DEMO_RETENTION_DAYS) * 86400,
             httponly=True,
             secure=True,
             samesite="lax",
             path="/",
         )
-        logger.info("SQM user SSO succeeded: username=%s", username)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        logger.info("SQM demo account login succeeded: username=%s", username)
         return response
-    except SQMSSOError as exc:
-        logger.warning("SQM browser login rejected: %s", exc)
+    except SQMDemoLoginError as exc:
+        logger.warning("SQM demo login rejected: %s", exc)
         return RedirectResponse(
-            url=f"/?sqm_error={quote(str(exc)[:200])}", status_code=303
+            url="/?sqm_demo_error=invalid", status_code=303
         )
 
 
@@ -898,7 +868,7 @@ async def auth_logout():
     response = Response(content='{"success":true}', media_type="application/json")
     for cookie_name in {
         settings.FEISHU_SESSION_COOKIE,
-        settings.SQM_SSO_SESSION_COOKIE,
+        settings.SQM_DEMO_SESSION_COOKIE,
     }:
         response.delete_cookie(
             key=cookie_name,

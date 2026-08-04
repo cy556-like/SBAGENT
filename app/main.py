@@ -322,17 +322,16 @@ def create_app() -> FastAPI:
                     except Exception as e:
                         logger.warning(f"[定期清理] 会话清理失败: {e}")
 
-                    # SQM-only retention: delete chats and their generated
-                    # files after the configured seven-day window. Web and
-                    # Feishu identities are deliberately out of scope.
+                    # SQM demo retention: delete only the fixed shared demo
+                    # account's chats and generated files after seven days.
                     try:
-                        if settings.SQM_SSO_ENABLED:
-                            from app.auth.sqm_sso import cleanup_expired_sqm_data
-                            sqm_cleaned = cleanup_expired_sqm_data()
-                            if sqm_cleaned["chats"] > 0:
-                                logger.info("[SQM retention] cleaned: %s", sqm_cleaned)
+                        if settings.SQM_DEMO_LOGIN_ENABLED:
+                            from app.auth.sqm_demo import cleanup_expired_demo_data
+                            demo_cleaned = cleanup_expired_demo_data()
+                            if demo_cleaned["chats"] > 0:
+                                logger.info("[SQM demo retention] cleaned: %s", demo_cleaned)
                     except Exception as e:
-                        logger.warning(f"[SQM retention] cleanup failed: {e}")
+                        logger.warning(f"[SQM demo retention] cleanup failed: {e}")
                     
                     # 2. 清理过期的导出文件（超过24小时的）
                     try:
@@ -340,8 +339,10 @@ def create_app() -> FastAPI:
                         if os.path.exists(export_dir):
                             cleaned_files = 0
                             now = time.time()
-                            sqm_export_age = max(1, settings.SQM_SSO_RETENTION_DAYS) * 86400
-                            from app.auth.sqm_sso import is_sqm_chat_id
+                            sqm_demo_export_age = max(
+                                1, settings.SQM_DEMO_RETENTION_DAYS
+                            ) * 86400
+                            from app.auth.sqm_demo import is_demo_chat_id
                             for item in os.listdir(export_dir):
                                 sub_dir = os.path.join(export_dir, item)
                                 if os.path.isdir(sub_dir):
@@ -349,8 +350,9 @@ def create_app() -> FastAPI:
                                     try:
                                         mtime = os.path.getmtime(sub_dir)
                                         max_age = (
-                                            sqm_export_age
-                                            if settings.SQM_SSO_ENABLED and is_sqm_chat_id(item)
+                                            sqm_demo_export_age
+                                            if settings.SQM_DEMO_LOGIN_ENABLED
+                                            and is_demo_chat_id(item)
                                             else 86400
                                         )
                                         if now - mtime > max_age:
